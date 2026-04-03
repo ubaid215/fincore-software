@@ -1,0 +1,35 @@
+// prisma/schema/manual-payments.prisma
+// Domain: Manual Payment Collection
+
+model ManualPayment {
+  id                 String              @id @default(uuid())
+  organizationId     String
+  subscriptionId     String
+  referenceCode      String              @unique
+  proformaS3Key      String?
+  amount             Decimal             @db.Decimal(10, 2)
+  currency           String              @default("PKR")
+  status             ManualPaymentStatus @default(PENDING)
+  confirmedByAdminId String?
+  confirmedAt        DateTime?
+  rejectionNote      String?
+  expiresAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription     Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  confirmedByAdmin User?         @relation("PaymentConfirmer", fields: [confirmedByAdminId], references: [id])
+
+  @@index([status])
+  @@index([referenceCode])
+  @@index([subscriptionId])
+  @@index([organizationId])
+}
+
+enum ManualPaymentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  EXPIRED
+}

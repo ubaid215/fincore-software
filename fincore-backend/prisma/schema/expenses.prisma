@@ -1,0 +1,91 @@
+// prisma/schema/expenses.prisma
+// Domain: Expense Management
+
+model Expense {
+  id             String        @id @default(uuid())
+  organizationId String
+  claimantId     String
+  approverId     String?
+  title          String
+  description    String?
+  totalAmount    Decimal       @db.Decimal(19, 4)
+  currency       String        @default("PKR")
+  status         ExpenseStatus @default(DRAFT)
+  submittedAt    DateTime?
+  approvedAt     DateTime?
+  rejectedAt     DateTime?
+  rejectionNote  String?
+  postedToGLAt   DateTime?
+  costCenterId   String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  claimant     User         @relation("ExpenseClaimer", fields: [claimantId], references: [id])
+  approver     User?        @relation("ExpenseApprover", fields: [approverId], references: [id])
+  lines        ExpenseLine[]
+  receipts     Receipt[]
+  costCenter   CostCenter? @relation(fields: [costCenterId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([organizationId, claimantId])
+}
+
+model ExpenseLine {
+  id          String  @id @default(uuid())
+  expenseId   String
+  accountId   String
+  description String
+  amount      Decimal @db.Decimal(19, 4)
+  category    String
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id])
+
+  @@index([expenseId])
+}
+
+model Receipt {
+  id        String   @id @default(uuid())
+  expenseId String
+  fileName  String
+  s3Key     String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId])
+}
+
+model CostCenter {
+  id             String   @id @default(uuid())
+  organizationId String
+  code           String
+  name           String
+  parentId       String?
+  managerId      String?
+  budget         Decimal  @db.Decimal(19, 4)
+  actual         Decimal  @default(0) @db.Decimal(19, 4)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id])
+  children     CostCenter[] @relation("CostCenterHierarchy")
+  expenses     Expense[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, parentId])
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  MANAGER_APPROVED
+  FINANCE_APPROVED
+  POSTED
+  REJECTED
+}

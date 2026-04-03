@@ -1,0 +1,77 @@
+// prisma/schema/workspace.prisma
+// Domain: Workspace & Multi-tenancy
+
+model Organization {
+  id            String    @id @default(uuid())
+  name          String
+  slug          String    @unique
+  email         String
+  timezone      String    @default("UTC")
+  currency      String    @default("PKR")
+  fiscalYearEnd Int       @default(12)
+  status        OrgStatus @default(ACTIVE)
+  // FIX: Added config Json field — onboarding.service.ts reads/writes onboardingCompleted here
+  config        Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth domain
+  members  UserOrganization[]
+  invites  Invite[]
+
+  // Accounting domain
+  accounts       Account[]
+  journalEntries JournalEntry[]
+  fiscalPeriods  FiscalPeriod[]
+
+  // Transaction domain
+  invoices       Invoice[]
+  expenses       Expense[]
+  bankStatements BankStatement[]
+
+  // Billing domain
+  subscription   Subscription?
+
+  // Manual payments
+  manualPayments ManualPayment[]
+
+  // Inventory domain
+  products       Product[]
+  stockMovements StockMovement[]
+  purchaseOrders PurchaseOrder[]
+  saleOrders     SaleOrder[]
+  stockSnapshots StockSnapshot[]
+
+  // Payroll domain
+  employees      Employee[]
+  salaryRecords  SalaryRecord[]
+
+  // Cost centers
+  costCenters    CostCenter[]
+
+  // Contacts
+  contacts       Contact[]
+
+  // Cross-cutting
+  auditLogs      AuditLog[]
+}
+
+model UserOrganization {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  role           UserRole @default(VIEWER)
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+}
+
+enum OrgStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELED
+}

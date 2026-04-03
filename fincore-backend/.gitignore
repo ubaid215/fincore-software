@@ -1,0 +1,20 @@
+cat >> .gitignore << 'EOF'
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# RSA Keys — never commit
+keys/
+
+# Coverage + build
+coverage/
+dist/
+
+# k6 results
+test/load/results/
+EOF
+
+node_modules/
+keys/

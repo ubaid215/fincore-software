@@ -1,0 +1,47 @@
+// prisma/schema/subscriptions.prisma
+// Domain: Subscription & Plans
+// Owner:  Billing team
+// Models: Plan, Subscription
+
+model Plan {
+  id           String   @id @default(uuid())
+  name         String   @unique  // STARTER | PROFESSIONAL | ENTERPRISE
+  displayName  String
+  priceMonthly Decimal  @db.Decimal(10, 2)
+  currency     String   @default("PKR")
+  maxSeats     Int
+  features     Json     // string[] — list of feature keys
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  organizationId     String             @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIALING)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  seatCount          Int                @default(1)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan         Plan            @relation(fields: [planId], references: [id])
+  payments     ManualPayment[]  // → manual-payments.prisma
+
+  @@index([organizationId])
+  @@index([status])
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELED
+}

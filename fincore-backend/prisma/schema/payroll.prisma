@@ -1,0 +1,59 @@
+// prisma/schema/payroll.prisma
+// Domain: Payroll Management
+
+model Employee {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeCode   String
+  firstName      String
+  lastName       String
+  email          String
+  phone          String?
+  department     String?
+  designation    String?
+  joinDate       DateTime
+  salary         Decimal  @db.Decimal(19, 4)
+  bankAccount    String?
+  cnic           String?
+  taxNumber      String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salaries     SalaryRecord[]
+
+  @@unique([organizationId, employeeCode])
+  @@index([organizationId, isActive])
+}
+
+model SalaryRecord {
+  id             String   @id @default(uuid())
+  organizationId String
+  employeeId     String
+  month          Int
+  year           Int
+  basicSalary    Decimal  @db.Decimal(19, 4)
+  allowances     Decimal  @db.Decimal(19, 4)
+  bonuses        Decimal  @db.Decimal(19, 4)
+  deductions     Decimal  @db.Decimal(19, 4)
+  netSalary      Decimal  @db.Decimal(19, 4)
+  status         SalaryStatus @default(PENDING)
+  paidAt         DateTime?
+  journalEntryId String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, employeeId, year, month])
+  @@index([organizationId, status])
+  @@index([employeeId])
+}
+
+enum SalaryStatus {
+  PENDING
+  PROCESSED
+  PAID
+  CANCELLED
+}

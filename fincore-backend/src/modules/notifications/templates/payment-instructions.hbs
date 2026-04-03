@@ -1,0 +1,59 @@
+{{! payment-instructions.hbs }}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>FinCore Payment Instructions</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #0d9488; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; }
+    .reference { background: #fef3c7; padding: 15px; text-align: center; font-size: 24px; letter-spacing: 2px; font-weight: bold; border-radius: 8px; margin: 20px 0; }
+    .bank-details { background: white; padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 20px 0; }
+    .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #6b7280; }
+    .warning { color: #dc2626; font-size: 14px; margin-top: 15px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>FinCore Payment Instructions</h1>
+  </div>
+  <div class="content">
+    <p>Dear {{customerName}},</p>
+
+    <p>Thank you for choosing FinCore. Please complete your payment using the details below to activate your <strong>{{planName}}</strong> plan.</p>
+
+    <div class="reference">
+      Reference Code: {{referenceCode}}
+    </div>
+
+    <div class="bank-details">
+      <h3>Bank Transfer Details</h3>
+      <p><strong>Bank:</strong> {{bankName}}</p>
+      <p><strong>Account Title:</strong> {{bankAccountTitle}}</p>
+      <p><strong>IBAN:</strong> {{bankIban}}</p>
+      <p><strong>SWIFT/BIC:</strong> {{bankSwift}}</p>
+      <hr>
+      <p><strong>Amount:</strong> {{formatCurrency amount currency}}</p>
+      <p><strong>Currency:</strong> {{currency}}</p>
+    </div>
+
+    <p><strong>IMPORTANT:</strong> You must include the reference code <strong>{{referenceCode}}</strong> in your bank transfer description. Without this code, we cannot match your payment.</p>
+
+    <div class="warning">
+      ⚠️ This reference code expires on {{formatDate expiresAt}}. If not paid by this date, you will need to initiate a new payment.
+    </div>
+
+    {{#if proformaPdfUrl}}
+    <p><a href="{{proformaPdfUrl}}" style="background: #0d9488; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Download Pro-forma Invoice (PDF)</a></p>
+    {{/if}}
+
+    <p>After you make the transfer, our finance team will verify and activate your subscription within 24 hours.</p>
+
+    <p>Need help? Contact us at <a href="mailto:support@fincore.com">support@fincore.com</a></p>
+  </div>
+  <div class="footer">
+    <p>&copy; {{formatYear}} FinCore. All rights reserved.</p>
+  </div>
+</body>
+</html>

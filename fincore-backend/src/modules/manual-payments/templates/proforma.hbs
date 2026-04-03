@@ -1,0 +1,159 @@
+{{! proforma.hbs }}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pro-forma Invoice - {{referenceCode}}</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      color: #1f2937;
+      margin: 0;
+      padding: 40px;
+    }
+    .invoice-box {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 30px;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      background: white;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #0d9488;
+      padding-bottom: 20px;
+      margin-bottom: 30px;
+    }
+    .header h1 {
+      color: #0d9488;
+      margin: 0;
+      font-size: 28px;
+    }
+    .header p {
+      color: #6b7280;
+      margin: 5px 0 0;
+    }
+    .reference-box {
+      background: #fef3c7;
+      padding: 15px;
+      text-align: center;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .reference-code {
+      font-size: 28px;
+      letter-spacing: 3px;
+      font-weight: bold;
+      font-family: monospace;
+      color: #b45309;
+    }
+    .bank-details {
+      background: #f3f4f6;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+    .bank-details h3 {
+      margin-top: 0;
+      color: #0d9488;
+    }
+    .bank-details p {
+      margin: 8px 0;
+    }
+    .amount {
+      font-size: 24px;
+      font-weight: bold;
+      color: #0d9488;
+      text-align: right;
+      margin: 20px 0;
+      padding: 15px;
+      background: #f0fdf4;
+      border-radius: 8px;
+    }
+    .footer {
+      margin-top: 30px;
+      text-align: center;
+      font-size: 12px;
+      color: #6b7280;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 20px;
+    }
+    .warning {
+      color: #dc2626;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 15px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #f9fafb;
+      font-weight: 600;
+    }
+    .text-right {
+      text-align: right;
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-box">
+    <div class="header">
+      <h1>FinCore</h1>
+      <p>Pro-forma Invoice</p>
+    </div>
+
+    <div class="reference-box">
+      <strong>REFERENCE CODE</strong>
+      <div class="reference-code">{{referenceCode}}</div>
+      <small>Use this code in your bank transfer description</small>
+    </div>
+
+    <table>
+      <tr>
+        <td width="50%"><strong>Invoice Number:</strong> {{invoiceNumber}}</td>
+        <td width="50%"><strong>Issue Date:</strong> {{formatDate issueDate}}</td>
+      </tr>
+      <tr>
+        <td><strong>Customer:</strong> {{customerName}}</td>
+        <td><strong>Email:</strong> {{customerEmail}}</td>
+      </tr>
+      <tr>
+        <td><strong>Plan:</strong> {{planDisplayName}}</td>
+        <td><strong>Valid Until:</strong> {{formatDate expiresAt}}</td>
+      </tr>
+    </table>
+
+    <div class="bank-details">
+      <h3>Bank Transfer Details</h3>
+      <p><strong>Bank Name:</strong> {{bankName}}</p>
+      <p><strong>Account Title:</strong> {{bankAccountTitle}}</p>
+      <p><strong>IBAN:</strong> {{bankIban}}</p>
+      <p><strong>SWIFT/BIC:</strong> {{bankSwift}}</p>
+    </div>
+
+    <div class="amount">
+      Total Amount: {{formatCurrency amount currency}}
+    </div>
+
+    <div class="warning">
+      ⚠️ IMPORTANT: This pro-forma invoice is not a tax invoice. Payment must be made within 7 days.<br>
+      Your subscription will be activated within 24 hours after we confirm receipt of payment.
+    </div>
+
+    <div class="footer">
+      <p>FinCore — Smart Financial Management for Pakistani Businesses</p>
+      <p>support@fincore.com | www.fincore.com</p>
+    </div>
+  </div>
+</body>
+</html>

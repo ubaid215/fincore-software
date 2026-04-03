@@ -1,0 +1,49 @@
+// prisma/schema/bank-reconciliation.prisma
+// Domain: Bank Reconciliation
+// Owner:  Recon team
+
+model BankStatement {
+  id             String   @id @default(uuid())
+  organizationId String
+  bankName       String
+  accountNumber  String
+  currency       String   @default("PKR")
+  importedAt     DateTime @default(now())
+  periodStart    DateTime
+  periodEnd      DateTime
+  s3Key          String
+  format         String   @default("CSV")
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  transactions  BankTransaction[]
+
+  @@index([organizationId])
+  @@index([organizationId, periodStart, periodEnd])
+}
+
+model BankTransaction {
+  id              String      @id @default(uuid())
+  statementId     String
+  date            DateTime
+  description     String
+  reference       String?
+  debit           Decimal     @default(0) @db.Decimal(19, 4)
+  credit          Decimal     @default(0) @db.Decimal(19, 4)
+  balance         Decimal?    @db.Decimal(19, 4)
+  matchStatus     MatchStatus @default(UNMATCHED)
+  matchedEntryId  String?
+  matchConfidence String?
+  createdAt       DateTime    @default(now())
+
+  statement BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@index([statementId, matchStatus])
+}
+
+enum MatchStatus {
+  UNMATCHED
+  AUTO_MATCHED
+  MANUALLY_MATCHED
+  EXCLUDED
+}

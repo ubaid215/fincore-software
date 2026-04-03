@@ -1,0 +1,64 @@
+// prisma/schema/auth.prisma
+// Domain: Authentication & Identity
+// Owner:  Auth team
+// Models: User, RefreshToken, Invite
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  mfaEnabled   Boolean  @default(false)
+  mfaSecret    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  organizations   UserOrganization[]     // → workspace.prisma
+  refreshTokens   RefreshToken[]
+  invitesSent     Invite[]               @relation("InviteSender")
+  expensesClaimed Expense[]              @relation("ExpenseClaimer")  // → expenses.prisma
+  expensesApproved Expense[]             @relation("ExpenseApprover") // → expenses.prisma
+  paymentsConfirmed ManualPayment[]      @relation("PaymentConfirmer") // → manual-payments.prisma
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Invite {
+  id             String    @id @default(uuid())
+  organizationId String
+  invitedById    String?
+  email          String
+  role           UserRole
+  token          String    @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])  // → workspace.prisma
+  invitedBy    User?        @relation("InviteSender", fields: [invitedById], references: [id])
+
+  @@index([organizationId])
+  @@index([token])
+}
+
+// ── Shared enums (referenced across multiple domain files) ────────────────────
+
+enum UserRole {
+  OWNER
+  ADMIN
+  ACCOUNTANT
+  MANAGER
+  VIEWER
+}

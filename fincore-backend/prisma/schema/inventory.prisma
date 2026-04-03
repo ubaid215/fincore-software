@@ -1,0 +1,231 @@
+// prisma/schema/inventory.prisma
+// Domain: Inventory Management
+
+model Product {
+  id                 String            @id @default(uuid())
+  organizationId     String
+  code               String
+  barcode            String?
+  name               String
+  description        String?
+  category           String?
+  brand              String?
+  unit               String
+  sellingPrice       Decimal           @db.Decimal(19, 4)
+  costPrice          Decimal           @db.Decimal(19, 4)
+  wholesalePrice     Decimal?          @db.Decimal(19, 4)
+  taxRate            Decimal           @default(0) @db.Decimal(5, 2)
+  currentStock       Int               @default(0)
+  minStockLevel      Int?
+  maxStockLevel      Int?
+  reorderQuantity    Int?
+  trackSerialNumbers Boolean           @default(false)
+  trackBatchNumbers  Boolean           @default(false)
+  trackExpiry        Boolean           @default(false)
+  isActive           Boolean           @default(true)
+  salesAccountId     String?
+  cogsAccountId      String?
+  inventoryAccountId String?
+  imageUrl           String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesAccount       Account?          @relation("ProductSalesAccount", fields: [salesAccountId], references: [id])
+  cogsAccount        Account?          @relation("ProductCogsAccount", fields: [cogsAccountId], references: [id])
+  inventoryAccount   Account?          @relation("ProductInventoryAccount", fields: [inventoryAccountId], references: [id])
+  
+  stockMovements     StockMovement[]
+  inventoryBatches   InventoryBatch[]
+  purchaseOrderLines PurchaseOrderLine[]
+  saleOrderLines     SaleOrderLine[]
+  invoiceLines       InvoiceLineItem[]
+  stockSnapshots     StockSnapshot[]   // ADD THIS
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, barcode])
+  @@index([organizationId, category])
+  @@index([organizationId, isActive])
+}
+
+model InventoryBatch {
+  id             String        @id @default(uuid())
+  organizationId String
+  productId      String
+  batchNumber    String
+  serialNumber   String?
+  quantity       Int
+  remainingQty   Int
+  costPrice      Decimal       @db.Decimal(19, 4)
+  purchaseDate   DateTime
+  expiryDate     DateTime?
+  createdAt      DateTime      @default(now())
+
+  product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  stockMovements StockMovement[]
+
+  @@unique([organizationId, batchNumber])
+  @@unique([organizationId, serialNumber])
+  @@index([organizationId, productId, expiryDate])
+}
+
+model StockMovement {
+  id             String            @id @default(uuid())
+  organizationId String
+  productId      String
+  batchId        String?
+  movementType   StockMovementType
+  quantity       Int
+  referenceId    String?
+  referenceType  String?
+  unitPrice      Decimal?          @db.Decimal(19, 4)
+  notes          String?
+  createdBy      String
+  createdAt      DateTime          @default(now())
+
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch          InventoryBatch?   @relation(fields: [batchId], references: [id])
+
+  @@index([organizationId, productId])
+  @@index([organizationId, createdAt])
+  @@index([referenceId, referenceType])
+}
+
+model StockSnapshot {
+  id             String   @id @default(uuid())
+  organizationId String
+  productId      String
+  asOfDate       DateTime
+  quantityOnHand Int
+  valueAtCost    Decimal  @db.Decimal(19, 4)
+  valueAtSelling Decimal  @db.Decimal(19, 4)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, productId, asOfDate])
+  @@index([organizationId, asOfDate])
+}
+
+model PurchaseOrder {
+  id             String              @id @default(uuid())
+  organizationId String
+  poNumber       String              @unique
+  vendorId       String?
+  vendorName     String
+  status         PurchaseOrderStatus @default(DRAFT)
+  orderDate      DateTime            @default(now())
+  expectedDate   DateTime?
+  subtotal       Decimal             @db.Decimal(19, 4)
+  taxAmount      Decimal             @default(0) @db.Decimal(19, 4)
+  totalAmount    Decimal             @db.Decimal(19, 4)
+  notes          String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  receivedBy     String?
+  receivedAt     DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vendor         Contact?            @relation("VendorPurchaseOrders", fields: [vendorId], references: [id])
+  lines          PurchaseOrderLine[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, poNumber])
+}
+
+model PurchaseOrderLine {
+  id              String   @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  productCode     String
+  productName     String
+  quantity        Int
+  receivedQty     Int      @default(0)
+  unitPrice       Decimal  @db.Decimal(19, 4)
+  total           Decimal  @db.Decimal(19, 4)
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+model SaleOrder {
+  id             String          @id @default(uuid())
+  organizationId String
+  soNumber       String          @unique
+  customerId     String?
+  customerName   String
+  status         SaleOrderStatus @default(DRAFT)
+  orderDate      DateTime        @default(now())
+  deliveryDate   DateTime?
+  subtotal       Decimal         @db.Decimal(19, 4)
+  taxAmount      Decimal         @default(0) @db.Decimal(19, 4)
+  totalAmount    Decimal         @db.Decimal(19, 4)
+  notes          String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  shippedBy      String?
+  shippedAt      DateTime?
+  invoiceId      String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Contact?        @relation("CustomerSaleOrders", fields: [customerId], references: [id])
+  lines          SaleOrderLine[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, soNumber])
+}
+
+model SaleOrderLine {
+  id            String   @id @default(uuid())
+  saleOrderId   String
+  productId     String
+  productCode   String
+  productName   String
+  quantity      Int
+  shippedQty    Int      @default(0)
+  unitPrice     Decimal  @db.Decimal(19, 4)
+  total         Decimal  @db.Decimal(19, 4)
+
+  saleOrder     SaleOrder @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
+  product       Product   @relation(fields: [productId], references: [id])
+
+  @@index([saleOrderId])
+  @@index([productId])
+}
+
+enum StockMovementType {
+  PURCHASE_IN
+  SALE_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RETURN_IN
+  RETURN_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum SaleOrderStatus {
+  DRAFT
+  CONFIRMED
+  PARTIALLY_SHIPPED
+  SHIPPED
+  INVOICED
+  CANCELLED
+}

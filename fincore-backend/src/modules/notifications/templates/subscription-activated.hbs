@@ -1,0 +1,43 @@
+{{! subscription-activated.hbs }}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>FinCore Subscription Activated</title>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #0d9488; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+    .content { background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 8px 8px; }
+    .button { display: inline-block; background: #0d9488; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+    .footer { margin-top: 30px; text-align: center; font-size: 12px; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Welcome to FinCore! 🎉</h1>
+  </div>
+  <div class="content">
+    <p>Dear {{customerName}},</p>
+
+    <p>Your payment has been confirmed and your <strong>{{planName}}</strong> plan is now <strong>ACTIVE</strong>.</p>
+
+    <p><strong>Subscription Period:</strong> {{formatDate startDate}} — {{formatDate endDate}}</p>
+
+    <p>You now have access to all features included in your plan:</p>
+    <ul>
+      <li>Invoicing & Estimates</li>
+      <li>Expense Tracking</li>
+      <li>Bank Reconciliation</li>
+      <li>Financial Reports</li>
+      <li>Multi-currency support</li>
+    </ul>
+
+    <a href="{{dashboardUrl}}" class="button">Go to Dashboard</a>
+
+    <p>Need help getting started? Check out our <a href="#">Getting Started Guide</a> or contact support.</p>
+  </div>
+  <div class="footer">
+    <p>&copy; {{formatYear}} FinCore. All rights reserved.</p>
+  </div>
+</body>
+</html>

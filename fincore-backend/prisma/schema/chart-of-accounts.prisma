@@ -1,0 +1,97 @@
+// prisma/schema/chart-of-accounts.prisma
+// Domain: Chart of Accounts
+
+model Account {
+  id             String      @id @default(uuid())
+  organizationId String
+  accountCode    String
+  name           String
+  type           AccountType
+  subType        String?
+  parentId       String?
+  isArchived     Boolean     @default(false)
+  isLocked       Boolean     @default(false)
+  description    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       Account?     @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children     Account[]    @relation("AccountHierarchy")
+  journalLines JournalLine[]
+  expenseLines ExpenseLine[]
+  
+  // Inventory relations
+  productsSold     Product[] @relation("ProductSalesAccount")
+  productsCost     Product[] @relation("ProductCogsAccount")
+  productsInventory Product[] @relation("ProductInventoryAccount")
+
+  @@unique([organizationId, accountCode])
+  @@index([organizationId, type])
+  @@index([organizationId, parentId])
+}
+
+model FiscalPeriod {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  startDate      DateTime
+  endDate        DateTime
+  status         PeriodStatus @default(OPEN)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  journalEntries JournalEntry[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, startDate, endDate])
+}
+
+model Contact {
+  id             String      @id @default(uuid())
+  organizationId String
+  contactType    ContactType
+  code           String
+  name           String
+  email          String?
+  phone          String?
+  address        String?
+  taxId          String?
+  openingBalance Decimal?    @db.Decimal(19, 4)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Invoice relations
+  customerInvoices Invoice[] @relation("CustomerInvoices")
+  
+  // Purchase/Sale order relations
+  purchaseOrders PurchaseOrder[] @relation("VendorPurchaseOrders")
+  saleOrders     SaleOrder[]     @relation("CustomerSaleOrders")
+
+  @@unique([organizationId, code])
+  @@index([organizationId, contactType])
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+  LOCKED
+}
+
+enum ContactType {
+  CUSTOMER
+  VENDOR
+  BANK
+}

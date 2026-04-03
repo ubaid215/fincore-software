@@ -1,0 +1,27 @@
+// prisma/schema/audit.prisma
+// Domain: Audit Logging (cross-cutting)
+// Owner:  Lead / DevOps
+// Models: AuditLog
+//
+// Written to for every significant state change across all domains.
+// Tagged with organizationId for multi-tenant isolation.
+// Append-only — no updates or deletes.
+
+model AuditLog {
+  id             String   @id @default(uuid())
+  organizationId String
+  userId         String?
+  action         String   // e.g. "invoice.sent", "expense.approved", "payment.confirmed"
+  resourceType   String   // e.g. "Invoice", "Expense", "ManualPayment"
+  resourceId     String
+  metadata       Json?    // Any extra context — old/new state, amounts, etc.
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, resourceType, resourceId])
+  @@index([organizationId, action])
+  @@index([organizationId, createdAt])
+}
