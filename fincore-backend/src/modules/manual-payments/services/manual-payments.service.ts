@@ -466,7 +466,7 @@ export class ManualPaymentsService {
     return {
       ...payment,
       amount: payment.amount.toNumber(),
-    } as ManualPaymentByReferenceResult;
+    };
   }
 
   async expireStalePayments(): Promise<number> {

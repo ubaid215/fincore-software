@@ -95,6 +95,8 @@ describe('AccountsService', () => {
     }).compile();
     service = module.get<AccountsService>(AccountsService);
     jest.clearAllMocks();
+    mockPrisma.account.findUnique.mockReset();
+    mockPrisma.account.findMany.mockResolvedValue([]);
   });
 
   // ─── create() ────────────────────────────────────────────────────────────
@@ -132,9 +134,7 @@ describe('AccountsService', () => {
     });
 
     it('throws NotFoundException when parent account does not exist', async () => {
-      mockPrisma.account.findUnique
-        .mockResolvedValueOnce(null) // code check — free
-        .mockResolvedValueOnce(null); // parent check — not found
+      mockPrisma.account.findUnique.mockResolvedValueOnce(null);
 
       await expect(service.create(ORG_ID, { ...dto, parentId: 'ghost-parent' })).rejects.toThrow(
         NotFoundException,
@@ -142,9 +142,9 @@ describe('AccountsService', () => {
     });
 
     it('throws NotFoundException when parent belongs to different org', async () => {
-      mockPrisma.account.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(makeAccount({ organizationId: 'other-org' }));
+      mockPrisma.account.findUnique.mockResolvedValueOnce(
+        makeAccount({ id: 'acc-parent', organizationId: 'other-org' }),
+      );
 
       await expect(service.create(ORG_ID, { ...dto, parentId: 'acc-parent' })).rejects.toThrow(
         NotFoundException,
@@ -152,8 +152,10 @@ describe('AccountsService', () => {
     });
 
     it('throws BadRequestException when child type differs from parent type', async () => {
-      const parent = makeAccount({ type: AccountType.LIABILITY });
-      mockPrisma.account.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(parent);
+      const parent = makeAccount({ id: 'acc-parent', type: AccountType.LIABILITY });
+      mockPrisma.account.findUnique
+        .mockResolvedValueOnce(parent)
+        .mockResolvedValueOnce(null);
 
       await expect(
         service.create(ORG_ID, { ...dto, parentId: 'acc-parent', type: AccountType.ASSET }),
@@ -161,10 +163,14 @@ describe('AccountsService', () => {
     });
 
     it('throws BadRequestException when adding child to archived parent', async () => {
-      const archivedParent = makeAccount({ isArchived: true, type: AccountType.ASSET });
+      const archivedParent = makeAccount({
+        id: 'acc-parent',
+        isArchived: true,
+        type: AccountType.ASSET,
+      });
       mockPrisma.account.findUnique
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce(archivedParent);
+        .mockResolvedValueOnce(archivedParent)
+        .mockResolvedValueOnce(null);
 
       await expect(service.create(ORG_ID, { ...dto, parentId: 'acc-parent' })).rejects.toThrow(
         /archived/i,
@@ -172,17 +178,17 @@ describe('AccountsService', () => {
     });
 
     it('throws BadRequestException when hierarchy depth would exceed 8', async () => {
-      const parent = makeAccount({ type: AccountType.ASSET });
+      const parent = makeAccount({ id: 'acc-parent', type: AccountType.ASSET, isArchived: false });
       mockPrisma.account.findUnique
-        .mockResolvedValueOnce(null) // code free
-        .mockResolvedValueOnce(parent); // parent found
+        .mockResolvedValueOnce(parent)
+        .mockResolvedValueOnce(null);
 
-      // Override getDepth by mocking it to return 8
-      jest.spyOn(service as any, 'getDepth').mockResolvedValue(8);
+      const depthSpy = jest.spyOn(AccountsService.prototype as any, 'getDepth').mockResolvedValue(8);
 
       await expect(service.create(ORG_ID, { ...dto, parentId: 'acc-parent' })).rejects.toThrow(
         /maximum.*hierarchy depth/i,
       );
+      depthSpy.mockRestore();
     });
   });
 
@@ -253,9 +259,9 @@ describe('AccountsService', () => {
     it('unarchives when parent is active', async () => {
       const archived = makeAccount({ isArchived: true, parentId: 'parent-001', children: [] });
       mockPrisma.account.findFirst.mockResolvedValue(archived);
-      mockPrisma.account
-        .findUniqueOrThrow!.mockResolvedValueOnce({ ...archived }) // account
-        .mockResolvedValueOnce(makeAccount({ id: 'parent-001', isArchived: false })); // parent
+      mockPrisma.account.findUnique.mockResolvedValueOnce(
+        makeAccount({ id: 'parent-001', isArchived: false, organizationId: ORG_ID }),
+      );
       mockPrisma.account.update.mockResolvedValue({ ...archived, isArchived: false });
 
       const result = await service.unarchive(ORG_ID, 'acc-001');
@@ -265,11 +271,11 @@ describe('AccountsService', () => {
     it('throws when parent is still archived', async () => {
       const archived = makeAccount({ isArchived: true, parentId: 'parent-001', children: [] });
       mockPrisma.account.findFirst.mockResolvedValue(archived);
-      mockPrisma.account
-        .findUniqueOrThrow!.mockResolvedValueOnce({ ...archived })
-        .mockResolvedValueOnce(makeAccount({ id: 'parent-001', isArchived: true }));
+      mockPrisma.account.findUnique.mockResolvedValueOnce(
+        makeAccount({ id: 'parent-001', isArchived: true, organizationId: ORG_ID }),
+      );
 
-      await expect(service.unarchive(ORG_ID, 'acc-001')).rejects.toThrow(/parent.*archived/i);
+      await expect(service.unarchive(ORG_ID, 'acc-001')).rejects.toThrow(/Cannot unarchive/i);
     });
   });
 

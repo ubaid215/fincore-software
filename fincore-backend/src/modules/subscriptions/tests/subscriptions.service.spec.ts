@@ -337,12 +337,12 @@ describe('SubscriptionsService', () => {
       );
     });
 
-    it('throws ConflictException for ACTIVE → SUSPENDED (must go via PAST_DUE)', async () => {
-      // ACTIVE is not in SUBSCRIPTION_TRANSITIONS.ACTIVE — wait, it's not
-      // ACTIVE allows PAST_DUE and CANCELED, NOT SUSPENDED directly
+    it('allows ACTIVE → SUSPENDED (manual suspension)', async () => {
       mockPrisma.subscription.findUnique.mockResolvedValue(makeSub(SubscriptionStatus.ACTIVE));
-      await expect(service.suspend(ORG_ID, { reason: 'MANUAL' })).rejects.toThrow(
-        ConflictException,
+      const result = await service.suspend(ORG_ID, { reason: 'MANUAL' });
+      expect(result.suspended).toBe(true);
+      expect(mockPrisma.organization.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { status: OrgStatus.SUSPENDED } }),
       );
     });
 

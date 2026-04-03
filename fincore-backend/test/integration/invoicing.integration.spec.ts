@@ -12,8 +12,9 @@
  * work correctly end-to-end through the ORM — without spinning up a NestJS HTTP server.
  *
  * Prerequisites:
- *   - TEST_DATABASE_URL env var pointing to a dedicated Postgres test database
+ *   - TEST_DATABASE_URL or DATABASE_URL pointing to a Postgres test database
  *   - `npx prisma migrate deploy` run against that database
+ * Skip when no DB (e.g. CI): SKIP_INTEGRATION_TESTS=1
  *
  * Sprint: S2 · Week 5–6
  */
@@ -137,7 +138,9 @@ const MULTI_LINE_DTO = {
 
 // ─── Suite ────────────────────────────────────────────────────────────────────
 
-describe('Invoicing Integration', () => {
+const skipIntegration = ['1', 'true'].includes(String(process.env.SKIP_INTEGRATION_TESTS).toLowerCase());
+
+(skipIntegration ? describe.skip : describe)('Invoicing Integration', () => {
   let module: TestingModule;
   let service: InvoicesService;
   let prisma: PrismaService;

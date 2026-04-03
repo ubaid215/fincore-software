@@ -204,6 +204,9 @@ describe('InvoicePdfService', () => {
     // Reset mock implementations
     mockPagePdf.mockResolvedValue(Buffer.from('mock-pdf-bytes'));
     mockPageSetContent.mockResolvedValue(undefined);
+
+    // beforeEach invokes launch() only to grab mock refs — do not count toward per-test assertions
+    mockLaunch.mockClear();
   });
 
   describe('generateAndUpload()', () => {

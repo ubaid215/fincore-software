@@ -27,7 +27,7 @@ export interface ManualPaymentWithRelations {
       id: string;
       name: string;
       displayName: string;
-      priceMonthly: number;
+      priceMonthly: Prisma.Decimal;
       currency: string;
     };
   };
@@ -36,7 +36,7 @@ export interface ManualPaymentWithRelations {
     email: string;
     firstName: string;
     lastName: string;
-  };
+  } | null;
 }
 
 export interface ProformaData {

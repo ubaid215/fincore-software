@@ -36,20 +36,16 @@ type ExpenseMockPrisma = {
   $transaction: jest.Mock;
 };
 
-const mockPrisma: ExpenseMockPrisma = {
-  expense: {
-    create: jest.fn(),
-    findFirst: jest.fn(),
-    findMany: jest.fn(),
-    count: jest.fn(),
-    update: jest.fn(),
-  },
-  account: { findMany: jest.fn() },
-  $transaction: jest.fn(),
+const mockPrisma = {} as ExpenseMockPrisma;
+mockPrisma.expense = {
+  create: jest.fn(),
+  findFirst: jest.fn(),
+  findMany: jest.fn(),
+  count: jest.fn(),
+  update: jest.fn(),
 };
-mockPrisma.$transaction.mockImplementation((cb: (tx: ExpenseMockPrisma) => unknown) =>
-  cb(mockPrisma),
-);
+mockPrisma.account = { findMany: jest.fn() };
+mockPrisma.$transaction = jest.fn((cb: (tx: ExpenseMockPrisma) => unknown) => cb(mockPrisma));
 
 const mockGlService = {
   createJournalEntry: jest.fn(),
@@ -183,7 +179,7 @@ describe('ExpensesService', () => {
 
       expect(result.status).toBe(ExpenseStatus.DRAFT);
       const createCall = mockPrisma.expense.create.mock.calls[0][0];
-      expect(createCall.data.totalAmount).toBe('8500.0000');
+      expect(new Decimal(createCall.data.totalAmount).toFixed(4)).toBe('8500.0000');
     });
 
     it('uppercases currency before saving', async () => {
@@ -226,7 +222,7 @@ describe('ExpensesService', () => {
       const createCall = mockPrisma.expense.create.mock.calls[0][0];
       // 0.1 + 0.2 floating point = 0.30000000000000004 in JS
       // Decimal.js should give us 0.3000
-      expect(createCall.data.totalAmount).toBe('0.3000');
+      expect(new Decimal(createCall.data.totalAmount).toFixed(4)).toBe('0.3000');
     });
   });
 

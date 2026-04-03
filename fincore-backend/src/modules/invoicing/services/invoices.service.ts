@@ -9,6 +9,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
@@ -370,9 +371,10 @@ export class InvoicesService {
     return `INV-${year}-${String(seq).padStart(6, '0')}`;
   }
 
+  /** Stable 63-bit advisory lock key for any org id (UUID, slug, or legacy `org-001` style). */
   private orgIdToLockKey(orgId: string): bigint {
-    const hex = orgId.replace(/-/g, '').slice(0, 8);
-    return BigInt('0x' + hex) + 1000n;
+    const h = createHash('sha256').update(orgId).digest().subarray(0, 8);
+    return (BigInt('0x' + h.toString('hex')) & ((1n << 63n) - 1n)) + 1000n;
   }
 
   private async enqueuePdfJob(invoiceId: string, organizationId: string) {

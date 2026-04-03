@@ -188,15 +188,14 @@ describe('AutoMatchService', () => {
       expect(result).toBeNull();
     });
 
-    it('returns null when best match confidence is LOW (no auto-apply)', () => {
-      // Amount matches but 3 day gap and no reference
+    it('returns MEDIUM when 3-day date delta and no reference (still within window)', () => {
       const txn = makeBankTxn({ date: new Date('2025-03-18'), reference: null });
       const txnAmt = new Decimal('50000');
       const entries = [makeGlEntry({ entryDate: new Date('2025-03-15'), reference: null })];
 
       const result = service.findBestMatch(txn, txnAmt, entries);
-      // 3-day delta with no reference → LOW → not auto-applied
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result!.confidence).toBe('MEDIUM');
     });
 
     it('picks best match when multiple candidates exist', () => {

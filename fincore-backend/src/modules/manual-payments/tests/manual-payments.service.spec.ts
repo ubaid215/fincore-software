@@ -237,6 +237,17 @@ describe('ManualPaymentsService', () => {
         organizationId: mockOrgId,
         role: UserRole.ADMIN,
       });
+      mockPrisma.userOrganization.findMany.mockResolvedValue([
+        {
+          role: UserRole.OWNER,
+          user: {
+            id: 'owner-1',
+            email: 'owner@example.com',
+            firstName: 'Owner',
+            lastName: 'User',
+          },
+        },
+      ]);
       mockPrisma.manualPayment.update.mockResolvedValue({
         ...mockPayment,
         status: ManualPaymentStatus.CONFIRMED,

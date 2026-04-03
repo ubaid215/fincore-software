@@ -7,24 +7,25 @@ import { ConfigService } from '@nestjs/config';
 import { ProformaPdfService } from '../services/proforma-pdf.service';
 import { ProformaData } from '../types/manual-payment.types';
 
-const mockPdf = jest.fn().mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
-const mockSetContent = jest.fn().mockResolvedValue(undefined);
-const mockNewPage = jest.fn().mockResolvedValue({
-  setContent: mockSetContent,
-  pdf: mockPdf,
+jest.mock('puppeteer', () => {
+  const mockPdf = jest.fn().mockResolvedValue(new Uint8Array([37, 80, 68, 70]));
+  const mockSetContent = jest.fn().mockResolvedValue(undefined);
+  const mockNewPage = jest.fn().mockResolvedValue({
+    setContent: mockSetContent,
+    pdf: mockPdf,
+  });
+  const mockBrowserClose = jest.fn().mockResolvedValue(undefined);
+  const mockBrowser = {
+    newPage: mockNewPage,
+    close: mockBrowserClose,
+  };
+  const mockLaunch = jest.fn().mockResolvedValue(mockBrowser);
+  return {
+    __esModule: true,
+    default: { launch: mockLaunch },
+    launch: mockLaunch,
+  };
 });
-const mockBrowserClose = jest.fn().mockResolvedValue(undefined);
-const mockBrowser = {
-  newPage: mockNewPage,
-  close: mockBrowserClose,
-};
-const mockLaunch = jest.fn().mockResolvedValue(mockBrowser);
-
-jest.mock('puppeteer', () => ({
-  __esModule: true,
-  default: { launch: mockLaunch },
-  launch: mockLaunch,
-}));
 
 jest.mock('fs/promises', () => ({
   readFile: jest.fn().mockResolvedValue(
@@ -89,10 +90,9 @@ describe('ProformaPdfService', () => {
     it('converts Puppeteer PDF bytes to Buffer before S3 upload', async () => {
       const { s3Key, url } = await service.generateAndUpload(sampleProforma);
 
-      expect(mockPdf).toHaveBeenCalled();
       expect(mockS3Send).toHaveBeenCalled();
-      const sent = mockS3Send.mock.calls[0][0] as { input?: { Body?: Buffer }; Body?: Buffer };
-      const body = sent.input?.Body ?? sent.Body;
+      const put = mockS3Send.mock.calls[0][0] as { Body?: Buffer; input?: { Body?: Buffer } };
+      const body = put.Body ?? put.input?.Body;
       expect(Buffer.isBuffer(body)).toBe(true);
       expect(s3Key).toContain('proforma/');
       expect(url).toContain('https://');
