@@ -96,7 +96,11 @@ export interface SuspensionResult {
   suspendedAt: Date;
 }
 
-export type SuspensionReason = 'PAST_DUE' | 'TRIAL_EXPIRED' | 'MANUAL';
+export type SuspensionReason =
+  | 'PAST_DUE'
+  | 'TRIAL_EXPIRED'
+  | 'MANUAL'
+  | 'GRACE_PERIOD_EXPIRED';
 
 export interface AutoSuspensionSummary {
   checkedAt: Date;

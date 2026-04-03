@@ -1,6 +1,5 @@
 // src/modules/manual-payments/types/manual-payment.types.ts
-import { ManualPaymentStatus } from '@prisma/client';
-import { Decimal } from '@prisma/client/runtime/library';
+import { ManualPaymentStatus, type Prisma } from '@prisma/client';
 
 // FIX: amount must be Decimal to match the Prisma model field type.
 // Using `number` caused TS2352 unsafe cast errors in manual-payments.service.ts.
@@ -12,7 +11,7 @@ export interface ManualPaymentWithRelations {
   subscriptionId: string;
   referenceCode: string;
   proformaS3Key: string | null;
-  amount: Decimal;          // was: number — FIX applied
+  amount: Prisma.Decimal;
   currency: string;
   status: ManualPaymentStatus;
   confirmedByAdminId: string | null;
@@ -83,3 +82,8 @@ export interface PaymentReferenceResponse {
   referenceCode: string;
   proformaPdfUrl: string;
 }
+
+/** Shape returned by getPaymentByReference (amount flattened to number for JSON/API use). */
+export type ManualPaymentByReferenceResult = Omit<ManualPaymentWithRelations, 'amount'> & {
+  amount: number;
+};

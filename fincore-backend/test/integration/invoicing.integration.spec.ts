@@ -599,7 +599,7 @@ describe('Invoicing Integration', () => {
       await createDraft(ORG_A);
       await createDraft(ORG_B); // should NOT appear in ORG_A results
 
-      const result = (await service.findAll(ORG_A, {})) as PaginatedResult;
+      const result = (await service.findAll(ORG_A, {})) as unknown as PaginatedResult;
 
       expect(result.total).toBe(2);
       expect(result.data.every((inv) => inv.organizationId === ORG_A)).toBe(true);
@@ -611,10 +611,10 @@ describe('Invoicing Integration', () => {
 
       const drafts = (await service.findAll(ORG_A, {
         status: InvoiceStatus.DRAFT,
-      })) as PaginatedResult;
+      })) as unknown as PaginatedResult;
       const sent = (await service.findAll(ORG_A, {
         status: InvoiceStatus.SENT,
-      })) as PaginatedResult;
+      })) as unknown as PaginatedResult;
 
       expect(drafts.total).toBe(1);
       expect(drafts.data[0].id).toBe(draft.id);
@@ -627,8 +627,8 @@ describe('Invoicing Integration', () => {
       await createDraft(ORG_A);
       await createDraft(ORG_A);
 
-      const page1 = (await service.findAll(ORG_A, { page: 1, limit: 2 })) as PaginatedResult;
-      const page2 = (await service.findAll(ORG_A, { page: 2, limit: 2 })) as PaginatedResult;
+      const page1 = (await service.findAll(ORG_A, { page: 1, limit: 2 })) as unknown as PaginatedResult;
+      const page2 = (await service.findAll(ORG_A, { page: 2, limit: 2 })) as unknown as PaginatedResult;
 
       expect(page1.total).toBe(3);
       expect(page1.page).toBe(1);
@@ -640,7 +640,7 @@ describe('Invoicing Integration', () => {
     });
 
     it('returns empty result set when org has no invoices', async () => {
-      const result = (await service.findAll(ORG_A, {})) as PaginatedResult;
+      const result = (await service.findAll(ORG_A, {})) as unknown as PaginatedResult;
       expect(result.total).toBe(0);
       expect(result.data).toHaveLength(0);
     });

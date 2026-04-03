@@ -1,5 +1,6 @@
 // src/modules/onboarding/services/onboarding.service.ts
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AccountsService } from '../../chart-of-accounts/services/accounts.service';
 import { SubscriptionsService } from '../../subscriptions/services/subscriptions.service';
@@ -207,8 +208,8 @@ export class OnboardingService {
         config: {
           onboardingCompleted: true,
           onboardingCompletedAt: new Date().toISOString(),
-          wizardData,
-        },
+          wizardData: wizardData as unknown as Prisma.InputJsonValue,
+        } as Prisma.InputJsonValue,
       },
     });
 

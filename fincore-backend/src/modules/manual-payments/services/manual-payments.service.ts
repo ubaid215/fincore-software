@@ -18,6 +18,7 @@ import {
   PendingPayment,
   ProformaData,
   ManualPaymentWithRelations,
+  ManualPaymentByReferenceResult,
 } from '../types/manual-payment.types';
 
 @Injectable()
@@ -169,6 +170,7 @@ export class ManualPaymentsService {
     // Create payment record
     const payment = await this.prisma.manualPayment.create({
       data: {
+        organizationId,
         subscriptionId,
         referenceCode,
         proformaS3Key: s3Key,
@@ -446,7 +448,7 @@ export class ManualPaymentsService {
     return results;
   }
 
-  async getPaymentByReference(referenceCode: string): Promise<any> {
+  async getPaymentByReference(referenceCode: string): Promise<ManualPaymentByReferenceResult> {
     const payment = await this.prisma.manualPayment.findUnique({
       where: { referenceCode },
       include: {
@@ -464,7 +466,7 @@ export class ManualPaymentsService {
     return {
       ...payment,
       amount: payment.amount.toNumber(),
-    };
+    } as ManualPaymentByReferenceResult;
   }
 
   async expireStalePayments(): Promise<number> {

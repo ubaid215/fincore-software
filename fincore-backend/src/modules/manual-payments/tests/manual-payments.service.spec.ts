@@ -11,7 +11,7 @@ import { ManualPaymentsService } from '../services/manual-payments.service';
 import { ProformaPdfService } from '../services/proforma-pdf.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { PrismaService } from '../../../database/prisma.service';
-import { ManualPaymentStatus, SubscriptionStatus, UserRole } from '@prisma/client';
+import { ManualPaymentStatus, Prisma, SubscriptionStatus, UserRole } from '@prisma/client';
 
 // Mock implementations
 const mockPrisma = {
@@ -29,6 +29,7 @@ const mockPrisma = {
   },
   userOrganization: {
     findUnique: jest.fn(),
+    findMany: jest.fn(),
   },
 };
 
@@ -67,7 +68,7 @@ describe('ManualPaymentsService', () => {
     id: 'plan-1',
     name: 'PROFESSIONAL',
     displayName: 'Professional',
-    priceMonthly: 7500,
+    priceMonthly: new Prisma.Decimal(7500),
     currency: 'PKR',
   };
   const mockSubscription = {
@@ -110,6 +111,17 @@ describe('ManualPaymentsService', () => {
   describe('initiatePayment', () => {
     beforeEach(() => {
       mockPrisma.subscription.findUnique.mockResolvedValue(mockSubscription);
+      mockPrisma.userOrganization.findUnique.mockResolvedValue({
+        userId: mockUserId,
+        organizationId: mockOrgId,
+        role: UserRole.OWNER,
+        user: {
+          id: mockUserId,
+          email: 'test@example.com',
+          firstName: 'Test',
+          lastName: 'User',
+        },
+      });
       mockPrisma.manualPayment.findFirst.mockResolvedValue(null);
       mockPrisma.manualPayment.findUnique.mockResolvedValue(null);
       mockProformaPdfService.generateAndUpload.mockResolvedValue({
@@ -118,6 +130,7 @@ describe('ManualPaymentsService', () => {
       });
       mockPrisma.manualPayment.create.mockResolvedValue({
         id: 'payment-1',
+        organizationId: mockOrgId,
         referenceCode: 'FC3A7B9D',
         status: ManualPaymentStatus.PENDING,
         expiresAt: new Date(Date.now() + 7 * 86400000),
@@ -131,7 +144,14 @@ describe('ManualPaymentsService', () => {
 
       expect(result.payment.referenceCode).toBeDefined();
       expect(result.proformaPdfUrl).toBe('https://s3.example.com/proforma.pdf');
-      expect(mockPrisma.manualPayment.create).toHaveBeenCalled();
+      expect(mockPrisma.manualPayment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            organizationId: mockOrgId,
+            subscriptionId: mockSubscriptionId,
+          }),
+        }),
+      );
       expect(mockNotificationsService.sendPaymentInstructions).toHaveBeenCalled();
     });
 
@@ -144,10 +164,8 @@ describe('ManualPaymentsService', () => {
     });
 
     it('throws ForbiddenException if user not in organization', async () => {
-      mockPrisma.subscription.findUnique.mockResolvedValue({
-        ...mockSubscription,
-        organization: { users: [] },
-      });
+      mockPrisma.subscription.findUnique.mockResolvedValue(mockSubscription);
+      mockPrisma.userOrganization.findUnique.mockResolvedValue(null);
 
       await expect(
         service.initiatePayment(mockUserId, mockOrgId, mockSubscriptionId),
@@ -188,7 +206,7 @@ describe('ManualPaymentsService', () => {
       id: 'payment-1',
       referenceCode: 'FC3A7B9D',
       status: ManualPaymentStatus.PENDING,
-      amount: 7500,
+      amount: new Prisma.Decimal(7500),
       currency: 'PKR',
       expiresAt: new Date(Date.now() + 7 * 86400000),
       subscriptionId: mockSubscriptionId,
@@ -273,11 +291,17 @@ describe('ManualPaymentsService', () => {
 
   describe('getPendingPayments', () => {
     it('returns list of pending payments', async () => {
+      mockPrisma.userOrganization.findMany.mockResolvedValue([
+        {
+          role: UserRole.OWNER,
+          user: { firstName: 'John', lastName: 'Doe', email: 'john@example.com' },
+        },
+      ]);
       mockPrisma.manualPayment.findMany.mockResolvedValue([
         {
           id: 'payment-1',
           referenceCode: 'ABC12345',
-          amount: 7500,
+          amount: new Prisma.Decimal(7500),
           currency: 'PKR',
           createdAt: new Date(),
           expiresAt: new Date(Date.now() + 7 * 86400000),

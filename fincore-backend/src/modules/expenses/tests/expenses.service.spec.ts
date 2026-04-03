@@ -24,17 +24,32 @@ import Decimal                     from 'decimal.js';
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
-const mockPrisma = {
+type ExpenseMockPrisma = {
   expense: {
-    create:    jest.fn(),
+    create: jest.Mock;
+    findFirst: jest.Mock;
+    findMany: jest.Mock;
+    count: jest.Mock;
+    update: jest.Mock;
+  };
+  account: { findMany: jest.Mock };
+  $transaction: jest.Mock;
+};
+
+const mockPrisma: ExpenseMockPrisma = {
+  expense: {
+    create: jest.fn(),
     findFirst: jest.fn(),
-    findMany:  jest.fn(),
-    count:     jest.fn(),
-    update:    jest.fn(),
+    findMany: jest.fn(),
+    count: jest.fn(),
+    update: jest.fn(),
   },
   account: { findMany: jest.fn() },
-  $transaction: jest.fn((cb: Function) => cb(mockPrisma)),
+  $transaction: jest.fn(),
 };
+mockPrisma.$transaction.mockImplementation((cb: (tx: ExpenseMockPrisma) => unknown) =>
+  cb(mockPrisma),
+);
 
 const mockGlService = {
   createJournalEntry: jest.fn(),

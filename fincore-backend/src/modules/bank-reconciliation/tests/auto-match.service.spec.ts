@@ -9,7 +9,7 @@
  */
 
 import { Test, TestingModule } from '@nestjs/testing';
-import { MatchStatus } from '@prisma/client';
+import { MatchStatus, Prisma } from '@prisma/client';
 import { AutoMatchService } from '../services/auto-match.service';
 import { PrismaService } from '../../../database/prisma.service';
 import Decimal from 'decimal.js';
@@ -35,8 +35,8 @@ function makeBankTxn(overrides: Partial<Record<string, unknown>> = {}) {
     date: new Date('2025-03-15'),
     description: 'Client payment ACME Corp',
     reference: 'INV-2025-000042',
-    debit: { toString: () => '0' },
-    credit: { toString: () => '50000' },
+    debit: new Prisma.Decimal(0),
+    credit: new Prisma.Decimal('50000'),
     balance: null,
     matchStatus: MatchStatus.UNMATCHED,
     ...overrides,
@@ -51,8 +51,8 @@ function makeGlEntry(overrides: Partial<Record<string, unknown>> = {}) {
     reference: 'INV-2025-000042',
     lines: [
       {
-        baseCurrencyDebit: { toString: () => '0' },
-        baseCurrencyCredit: { toString: () => '50000' },
+        baseCurrencyDebit: new Prisma.Decimal(0),
+        baseCurrencyCredit: new Prisma.Decimal('50000'),
       },
     ],
     ...overrides,
