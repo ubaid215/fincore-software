@@ -4,13 +4,13 @@
 
 model BankStatement {
   id             String   @id @default(uuid())
-  organizationId String
-  bankName       String
-  accountNumber  String
+  organizationId String  @map("organization_id")
+  bankName       String  @map("bank_name")
+  accountNumber  String  @map("account_number")
   currency       String   @default("PKR")
-  importedAt     DateTime @default(now())
-  periodStart    DateTime
-  periodEnd      DateTime
+  importedAt     DateTime @default(now())  @map("imported_at")
+  periodStart    DateTime  @map("period_start")
+  periodEnd      DateTime  @map("period_end")
   s3Key          String
   format         String   @default("CSV")
 
@@ -23,7 +23,7 @@ model BankStatement {
 
 model BankTransaction {
   id              String      @id @default(uuid())
-  statementId     String
+  statementId     String  @map("statement_id")
   date            DateTime
   description     String
   reference       String?
@@ -31,9 +31,9 @@ model BankTransaction {
   credit          Decimal     @default(0) @db.Decimal(19, 4)
   balance         Decimal?    @db.Decimal(19, 4)
   matchStatus     MatchStatus @default(UNMATCHED)
-  matchedEntryId  String?
-  matchConfidence String?
-  createdAt       DateTime    @default(now())
+  matchedEntryId  String?  @map("matched_entry_id")
+  matchConfidence String?  @map("match_confidence")
+  createdAt       DateTime    @default(now())  @map("created_at")
 
   statement BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
 

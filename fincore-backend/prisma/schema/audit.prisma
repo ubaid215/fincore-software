@@ -9,15 +9,15 @@
 
 model AuditLog {
   id             String   @id @default(uuid())
-  organizationId String
-  userId         String?
+  organizationId String  @map("organization_id")
+  userId         String?  @map("user_id")
   action         String   // e.g. "invoice.sent", "expense.approved", "payment.confirmed"
-  resourceType   String   // e.g. "Invoice", "Expense", "ManualPayment"
-  resourceId     String
+  resourceType   String   // e.g. "Invoice", "Expense", "ManualPayment"  @map("resource_type")
+  resourceId     String  @map("resource_id")
   metadata       Json?    // Any extra context — old/new state, amounts, etc.
-  ipAddress      String?
-  userAgent      String?
-  createdAt      DateTime @default(now())
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
+  createdAt      DateTime @default(now())  @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id])
 

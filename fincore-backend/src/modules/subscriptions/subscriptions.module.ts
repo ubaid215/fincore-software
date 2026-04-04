@@ -1,29 +1,31 @@
-/**
- * src/modules/subscriptions/subscriptions.module.ts
- *
- * Subscriptions module.
- *
- * NOTE: This module does NOT import FeatureFlagsModule to avoid circular deps.
- * FeatureFlagsModule imports SubscriptionsModule (one-way dependency).
- * Cache invalidation is done directly via Redis inside SubscriptionsService.
- *
- * Sprint: S4 · Week 9–10
- */
-
+// src/modules/subscriptions/subscriptions.module.ts
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
+import { ConfigService } from '@nestjs/config';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { SubscriptionsController } from './controllers/subscriptions.controller';
 
 @Module({
+  imports: [
+    BullModule.registerQueueAsync({
+      name: 'subscriptions',
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.get<string>('redis.host', 'localhost'),
+          port: configService.get<number>('redis.port', 6379),
+          password: configService.get<string>('redis.password'),
+        },
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: 100,
+        },
+      }),
+      inject: [ConfigService],
+    }),
+  ],
   providers: [SubscriptionsService],
   controllers: [SubscriptionsController],
   exports: [SubscriptionsService],
 })
 export class SubscriptionsModule {}
-
-/*
- * Sprint S4 · Subscriptions Module · Week 9–10
- * Depends on: PrismaModule (global), IoRedisModule (global via AppModule)
- * @Cron on SubscriptionsService requires ScheduleModule.forRoot() in AppModule.
- * Owned by: Billing team
- */

@@ -3,19 +3,19 @@
 
 model ManualPayment {
   id                 String              @id @default(uuid())
-  organizationId     String
-  subscriptionId     String
-  referenceCode      String              @unique
-  proformaS3Key      String?
+  organizationId     String  @map("organization_id")
+  subscriptionId     String  @map("subscription_id")
+  referenceCode      String              @unique  @map("reference_code")
+  proformaS3Key      String?  @map("proforma_s3_key")
   amount             Decimal             @db.Decimal(10, 2)
   currency           String              @default("PKR")
   status             ManualPaymentStatus @default(PENDING)
-  confirmedByAdminId String?
-  confirmedAt        DateTime?
-  rejectionNote      String?
-  expiresAt          DateTime?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  confirmedByAdminId String?  @map("confirmed_by_admin_id")
+  confirmedAt        DateTime?  @map("confirmed_at")
+  rejectionNote      String?  @map("rejection_note")
+  expiresAt          DateTime?  @map("expires_at")
+  createdAt          DateTime            @default(now())  @map("created_at")
+  updatedAt          DateTime            @updatedAt  @map("updated_at")
 
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscription     Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)

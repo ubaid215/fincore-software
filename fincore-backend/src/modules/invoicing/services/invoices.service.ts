@@ -1,5 +1,24 @@
 /**
  * src/modules/invoicing/services/invoices.service.ts
+ *
+ * ── Fixes in this version ────────────────────────────────────────────────
+ *
+ *  1. void() — PAID guard now runs BEFORE assertTransition()
+ *     Previously the PAID check came after assertTransition(), which means
+ *     PAID→VOID would throw the generic "none — terminal state" message
+ *     instead of the user-facing credit-note hint. Correct order:
+ *       findOneOrFail → PAID check → assertTransition → update
+ *
+ *  2. generateInvoiceNumber — raw SQL moved inside $transaction
+ *     pg_advisory_xact_lock is transaction-scoped. Calling it outside a
+ *     transaction means the lock is immediately released, making the
+ *     advisory-lock protection useless under concurrent load.
+ *     The method now accepts an optional transaction client and the lock +
+ *     count query run inside the same transaction as the invoice.create().
+ *     The raw SQL also now explicitly references `organization_id` which
+ *     matches the @map("organization_id") annotation added to the Prisma
+ *     schema — without that annotation the column name is ambiguous and
+ *     Postgres returned error 42703.
  */
 
 import {
@@ -56,9 +75,13 @@ export class InvoicesService {
 
     const computedLines = this.computeLineItems(dto.lineItems);
     const totals = this.aggregateTotals(computedLines);
-    const invoiceNumber = await this.generateInvoiceNumber(organizationId);
 
+    // generateInvoiceNumber now runs INSIDE the transaction so the advisory
+    // lock spans the same transaction as the INSERT, making it safe under
+    // concurrent load (lock released when the tx commits/rolls back).
     const invoice = await this.prisma.$transaction(async (tx) => {
+      const invoiceNumber = await this.generateInvoiceNumber(organizationId, tx);
+
       return tx.invoice.create({
         data: {
           organizationId,
@@ -191,13 +214,21 @@ export class InvoicesService {
 
   async void(organizationId: string, invoiceId: string) {
     const invoice = await this.findOneOrFail(organizationId, invoiceId);
-    this.assertTransition(invoice.status, InvoiceStatus.VOID, invoice.invoiceNumber);
 
+    // ── PAID guard FIRST ──────────────────────────────────────────────────
+    // Must come before assertTransition(). If reversed, PAID→VOID hits
+    // assertTransition first (PAID has no transitions) and throws the generic
+    // "none — terminal state" message instead of the user-facing credit-note
+    // hint. The integration test 'throws ConflictException with credit-note
+    // hint when voiding a PAID invoice' verifies this ordering.
     if (invoice.status === InvoiceStatus.PAID) {
       throw new ConflictException(
         `Invoice '${invoice.invoiceNumber}' is PAID and cannot be voided. Issue a credit note instead.`,
       );
     }
+
+    // Generic state-machine guard (catches VOID→VOID and other bad transitions)
+    this.assertTransition(invoice.status, InvoiceStatus.VOID, invoice.invoiceNumber);
 
     return this.prisma.invoice.update({
       where: { id: invoiceId },
@@ -216,6 +247,7 @@ export class InvoicesService {
       InvoiceStatus.PARTIALLY_PAID,
       InvoiceStatus.DISPUTED,
     ];
+
     if (!payableStatuses.includes(invoice.status)) {
       throw new ConflictException(
         `Cannot record payment on invoice '${invoice.invoiceNumber}' — status is ${invoice.status}.`,
@@ -250,10 +282,7 @@ export class InvoicesService {
 
       const updated = await tx.invoice.update({
         where: { id: invoiceId },
-        data: {
-          amountPaid: newAmountPaid.toString(),
-          status: newStatus,
-        },
+        data: { amountPaid: newAmountPaid.toString(), status: newStatus },
         include: this.defaultInclude(),
       });
 
@@ -358,10 +387,27 @@ export class InvoicesService {
     }
   }
 
-  private async generateInvoiceNumber(organizationId: string): Promise<string> {
+  /**
+   * Generate the next sequential invoice number for the given org.
+   *
+   * Runs inside a Prisma interactive transaction (tx) so that the
+   * pg_advisory_xact_lock is held for the duration of the INSERT — the lock
+   * is automatically released when the transaction commits or rolls back.
+   *
+   * Requires the @map("organization_id") annotation on Invoice.organizationId
+   * in the Prisma schema (and the corresponding migration) so that the raw
+   * SQL column reference matches the actual DB column name.
+   *
+   * @param organizationId  The org whose invoice sequence to advance.
+   * @param tx              The active Prisma transaction client.
+   */
+  private async generateInvoiceNumber(
+    organizationId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
     const lockKey = this.orgIdToLockKey(organizationId);
 
-    const result = await this.prisma.$queryRaw<[{ next_number: bigint }]>`
+    const result = await tx.$queryRaw<[{ next_number: bigint }]>`
       SELECT pg_advisory_xact_lock(${lockKey}),
              (SELECT COUNT(*) FROM invoices WHERE organization_id = ${organizationId}) + 1 AS next_number
     `;
@@ -371,7 +417,7 @@ export class InvoicesService {
     return `INV-${year}-${String(seq).padStart(6, '0')}`;
   }
 
-  /** Stable 63-bit advisory lock key for any org id (UUID, slug, or legacy `org-001` style). */
+  /** Stable 63-bit advisory lock key derived from any org id string. */
   private orgIdToLockKey(orgId: string): bigint {
     const h = createHash('sha256').update(orgId).digest().subarray(0, 8);
     return (BigInt('0x' + h.toString('hex')) & ((1n << 63n) - 1n)) + 1000n;

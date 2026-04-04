@@ -3,22 +3,22 @@
 
 model Employee {
   id             String   @id @default(uuid())
-  organizationId String
-  employeeCode   String
-  firstName      String
-  lastName       String
+  organizationId String  @map("organization_id")
+  employeeCode   String  @map("employee_code")
+  firstName      String  @map("first_name")
+  lastName       String  @map("last_name")
   email          String
   phone          String?
   department     String?
   designation    String?
-  joinDate       DateTime
+  joinDate       DateTime  @map("join_date")
   salary         Decimal  @db.Decimal(19, 4)
-  bankAccount    String?
+  bankAccount    String?  @map("bank_account")
   cnic           String?
-  taxNumber      String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  taxNumber      String?  @map("tax_number")
+  isActive       Boolean  @default(true)  @map("is_active")
+  createdAt      DateTime @default(now())  @map("created_at")
+  updatedAt      DateTime @updatedAt  @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salaries     SalaryRecord[]
@@ -29,19 +29,19 @@ model Employee {
 
 model SalaryRecord {
   id             String   @id @default(uuid())
-  organizationId String
-  employeeId     String
+  organizationId String  @map("organization_id")
+  employeeId     String  @map("employee_id")
   month          Int
   year           Int
-  basicSalary    Decimal  @db.Decimal(19, 4)
+  basicSalary    Decimal  @db.Decimal(19, 4)  @map("basic_salary")
   allowances     Decimal  @db.Decimal(19, 4)
   bonuses        Decimal  @db.Decimal(19, 4)
   deductions     Decimal  @db.Decimal(19, 4)
-  netSalary      Decimal  @db.Decimal(19, 4)
+  netSalary      Decimal  @db.Decimal(19, 4)  @map("net_salary")
   status         SalaryStatus @default(PENDING)
-  paidAt         DateTime?
-  journalEntryId String?
-  createdAt      DateTime @default(now())
+  paidAt         DateTime?  @map("paid_at")
+  journalEntryId String?  @map("journal_entry_id")
+  createdAt      DateTime @default(now())  @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)

@@ -1,11 +1,5 @@
 // src/modules/manual-payments/types/manual-payment.types.ts
 import { ManualPaymentStatus, type Prisma } from '@prisma/client';
-
-// FIX: amount must be Decimal to match the Prisma model field type.
-// Using `number` caused TS2352 unsafe cast errors in manual-payments.service.ts.
-// All three call sites were doing `payment as ManualPaymentWithRelations` where
-// the Prisma-returned payment.amount is a Decimal, not a number.
-// Downstream consumers should call .toNumber() when they need a plain number.
 export interface ManualPaymentWithRelations {
   id: string;
   subscriptionId: string;
@@ -39,21 +33,26 @@ export interface ManualPaymentWithRelations {
   } | null;
 }
 
+// src/modules/manual-payments/types/manual-payment.types.ts
 export interface ProformaData {
   referenceCode: string;
+  invoiceNumber: string;
+  issueDate: Date | string;
   customerName: string;
   customerEmail: string;
-  planName: string;
-  planDisplayName: string;
-  amount: number;
-  currency: string;
+  planDisplayName?: string;
+  planName?: string; // Fallback
+  expiresAt: Date | string;
   bankName: string;
   bankAccountTitle: string;
   bankIban: string;
   bankSwift: string;
-  expiresAt: Date;
-  invoiceNumber: string;
-  issueDate: Date;
+  amount: number;
+  currency: string;
+  // Optional fields
+  notes?: string;
+  discount?: number;
+  tax?: number;
 }
 
 export interface InitiatePaymentResult {

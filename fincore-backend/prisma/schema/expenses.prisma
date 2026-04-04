@@ -3,22 +3,22 @@
 
 model Expense {
   id             String        @id @default(uuid())
-  organizationId String
-  claimantId     String
-  approverId     String?
+  organizationId String  @map("organization_id")
+  claimantId     String  @map("claimant_id")
+  approverId     String?  @map("approver_id")
   title          String
   description    String?
-  totalAmount    Decimal       @db.Decimal(19, 4)
+  totalAmount    Decimal       @db.Decimal(19, 4)  @map("total_amount")
   currency       String        @default("PKR")
   status         ExpenseStatus @default(DRAFT)
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  rejectedAt     DateTime?
-  rejectionNote  String?
-  postedToGLAt   DateTime?
-  costCenterId   String?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  submittedAt    DateTime?  @map("submitted_at")
+  approvedAt     DateTime?  @map("approved_at")
+  rejectedAt     DateTime?  @map("rejected_at")
+  rejectionNote  String?  @map("rejection_note")
+  postedToGLAt   DateTime?  @map("posted_to_gl_at")
+  costCenterId   String?  @map("cost_center_id")
+  createdAt      DateTime      @default(now())  @map("created_at")
+  updatedAt      DateTime      @updatedAt  @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   claimant     User         @relation("ExpenseClaimer", fields: [claimantId], references: [id])
@@ -33,8 +33,8 @@ model Expense {
 
 model ExpenseLine {
   id          String  @id @default(uuid())
-  expenseId   String
-  accountId   String
+  expenseId   String  @map("expense_id")
+  accountId   String  @map("account_id")
   description String
   amount      Decimal @db.Decimal(19, 4)
   category    String
@@ -47,12 +47,12 @@ model ExpenseLine {
 
 model Receipt {
   id        String   @id @default(uuid())
-  expenseId String
-  fileName  String
+  expenseId String  @map("expense_id")
+  fileName  String  @map("file_name")
   s3Key     String
-  mimeType  String
-  sizeBytes Int
-  createdAt DateTime @default(now())
+  mimeType  String  @map("mime_type")
+  sizeBytes Int  @map("size_bytes")
+  createdAt DateTime @default(now())  @map("created_at")
 
   expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
@@ -61,16 +61,16 @@ model Receipt {
 
 model CostCenter {
   id             String   @id @default(uuid())
-  organizationId String
+  organizationId String  @map("organization_id")
   code           String
   name           String
-  parentId       String?
-  managerId      String?
+  parentId       String?  @map("parent_id")
+  managerId      String?  @map("manager_id")
   budget         Decimal  @db.Decimal(19, 4)
   actual         Decimal  @default(0) @db.Decimal(19, 4)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive       Boolean  @default(true)  @map("is_active")
+  createdAt      DateTime @default(now())  @map("created_at")
+  updatedAt      DateTime @updatedAt  @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent       CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id])

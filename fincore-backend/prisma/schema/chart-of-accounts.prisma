@@ -3,17 +3,17 @@
 
 model Account {
   id             String      @id @default(uuid())
-  organizationId String
-  accountCode    String
+  organizationId String  @map("organization_id")
+  accountCode    String  @map("account_code")
   name           String
   type           AccountType
-  subType        String?
-  parentId       String?
-  isArchived     Boolean     @default(false)
-  isLocked       Boolean     @default(false)
+  subType        String?  @map("sub_type")
+  parentId       String?  @map("parent_id")
+  isArchived     Boolean     @default(false)  @map("is_archived")
+  isLocked       Boolean     @default(false)  @map("is_locked")
   description    String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime    @default(now())  @map("created_at")
+  updatedAt      DateTime    @updatedAt  @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   parent       Account?     @relation("AccountHierarchy", fields: [parentId], references: [id])
@@ -33,13 +33,13 @@ model Account {
 
 model FiscalPeriod {
   id             String       @id @default(uuid())
-  organizationId String
+  organizationId String  @map("organization_id")
   name           String
-  startDate      DateTime
-  endDate        DateTime
+  startDate      DateTime  @map("start_date")
+  endDate        DateTime  @map("end_date")
   status         PeriodStatus @default(OPEN)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime     @default(now())  @map("created_at")
+  updatedAt      DateTime     @updatedAt  @map("updated_at")
 
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   journalEntries JournalEntry[]
@@ -50,18 +50,18 @@ model FiscalPeriod {
 
 model Contact {
   id             String      @id @default(uuid())
-  organizationId String
+  organizationId String  @map("organization_id")
   contactType    ContactType
   code           String
   name           String
   email          String?
   phone          String?
   address        String?
-  taxId          String?
-  openingBalance Decimal?    @db.Decimal(19, 4)
-  isActive       Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  taxId          String?  @map("tax_id")
+  openingBalance Decimal?    @db.Decimal(19, 4)  @map("opening_balance")
+  isActive       Boolean     @default(true)  @map("is_active")
+  createdAt      DateTime    @default(now())  @map("created_at")
+  updatedAt      DateTime    @updatedAt  @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   

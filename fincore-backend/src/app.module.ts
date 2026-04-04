@@ -28,6 +28,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { FinancialReportsModule } from './modules/financial-reports/financial-reports.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { GlobalRedisModule } from './modules/redis/redis.module';
 
 @Module({
   imports: [
@@ -97,6 +98,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     ExpensesModule,
     BankReconciliationModule,
     SubscriptionsModule,
+    GlobalRedisModule,
     FeatureFlagsModule,
     ManualPaymentsModule,
     NotificationsModule,

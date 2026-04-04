@@ -4,33 +4,34 @@
 
 model Invoice {
   id              String        @id @default(uuid())
-  organizationId  String
-  invoiceNumber   String
-  clientName      String
-  clientEmail     String?
-  clientAddress   String?
-  customerId      String?
+  organizationId  String  @map("organization_id")
+  invoiceNumber   String  @map("invoice_number")
+  clientName      String  @map("client_name")
+  clientEmail     String?  @map("client_email")
+  clientAddress   String?  @map("client_address")
+  customerId      String?  @map("customer_id")
   status          InvoiceStatus @default(DRAFT)
-  issueDate       DateTime
-  dueDate         DateTime?
+  issueDate       DateTime  @map("issue_date")
+  dueDate         DateTime?  @map("due_date")
   currency        String        @default("PKR")
   subtotal        Decimal       @db.Decimal(19, 4)
-  taxAmount       Decimal       @default(0) @db.Decimal(19, 4)
-  discountAmount  Decimal       @default(0) @db.Decimal(19, 4)
-  totalAmount     Decimal       @db.Decimal(19, 4)
-  amountPaid      Decimal       @default(0) @db.Decimal(19, 4)
+  taxAmount       Decimal       @default(0) @db.Decimal(19, 4)  @map("tax_amount")
+  discountAmount  Decimal       @default(0) @db.Decimal(19, 4)  @map("discount_amount")
+  totalAmount     Decimal       @db.Decimal(19, 4)  @map("total_amount")
+  amountPaid      Decimal       @default(0) @db.Decimal(19, 4)  @map("amount_paid")
   notes           String?
-  pdfUrl          String?
-  isRecurring     Boolean       @default(false)
-  recurringPeriod String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  pdfUrl          String?  @map("pdf_url")
+  isRecurring     Boolean       @default(false)  @map("is_recurring")
+  recurringPeriod String?  @map("recurring_period")
+  createdAt       DateTime      @default(now())  @map("created_at")
+  updatedAt       DateTime      @updatedAt  @map("updated_at")
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer     Contact?          @relation("CustomerInvoices", fields: [customerId], references: [id])
   lineItems    InvoiceLineItem[]
   payments     InvoicePayment[]
 
+  @@map("invoices")
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
@@ -43,37 +44,39 @@ model Invoice {
 // this relation was added. Running `npx prisma generate` will resolve those errors.
 model InvoiceLineItem {
   id          String   @id @default(uuid())
-  invoiceId   String
+  invoiceId   String  @map("invoice_id")
   description String
   quantity    Decimal  @db.Decimal(10, 4)
-  unitPrice   Decimal  @db.Decimal(19, 4)
-  taxCode     String?
-  taxRate     Decimal  @default(0) @db.Decimal(5, 4)
+  unitPrice   Decimal  @db.Decimal(19, 4)  @map("unit_price")
+  taxCode     String?  @map("tax_code")
+  taxRate     Decimal  @default(0) @db.Decimal(5, 4)  @map("tax_rate")
   discount    Decimal  @default(0) @db.Decimal(5, 4)
   total       Decimal  @db.Decimal(19, 4)
-  productId   String?
+  productId   String?  @map("product_id")
 
   invoice Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   // FIX: This relation must exist for `include: { product: true }` to work in services.
   // If this was previously missing, add it and run `npx prisma generate && npx prisma migrate dev`.
   product Product?  @relation(fields: [productId], references: [id])
 
+  @@map("invoice_line_items")
   @@index([invoiceId])
   @@index([productId])
 }
 
 model InvoicePayment {
   id        String   @id @default(uuid())
-  invoiceId String
+  invoiceId String  @map("invoice_id")
   amount    Decimal  @db.Decimal(19, 4)
   currency  String
   method    String
   reference String?
-  paidAt    DateTime
-  createdAt DateTime @default(now())
+  paidAt    DateTime  @map("paid_at")
+  createdAt DateTime @default(now())  @map("created_at")
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
+  @@map("invoice_payments")
   @@index([invoiceId])
 }
 

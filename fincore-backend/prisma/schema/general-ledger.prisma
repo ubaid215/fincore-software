@@ -4,18 +4,18 @@
 
 model JournalEntry {
   id             String             @id @default(uuid())
-  organizationId String
-  periodId       String?
-  entryNumber    String
+  organizationId String  @map("organization_id")
+  periodId       String?  @map("period_id")
+  entryNumber    String  @map("entry_number")
   description    String
   reference      String?
-  entryDate      DateTime
+  entryDate      DateTime  @map("entry_date")
   status         JournalEntryStatus @default(DRAFT)
-  isReversed     Boolean            @default(false)
-  reversalOfId   String?
-  postedAt       DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  isReversed     Boolean            @default(false)  @map("is_reversed")
+  reversalOfId   String?  @map("reversal_of_id")
+  postedAt       DateTime?  @map("posted_at")
+  createdAt      DateTime           @default(now())  @map("created_at")
+  updatedAt      DateTime           @updatedAt  @map("updated_at")
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   period       FiscalPeriod? @relation(fields: [periodId], references: [id])
@@ -30,16 +30,16 @@ model JournalEntry {
 
 model JournalLine {
   id                 String   @id @default(uuid())
-  journalEntryId     String
-  accountId          String
+  journalEntryId     String  @map("journal_entry_id")
+  accountId          String  @map("account_id")
   description        String?
   debit              Decimal  @default(0) @db.Decimal(19, 4)
   credit             Decimal  @default(0) @db.Decimal(19, 4)
   currency           String   @default("PKR")
-  fxRate             Decimal  @default(1) @db.Decimal(19, 6)
-  baseCurrencyDebit  Decimal  @default(0) @db.Decimal(19, 4)
-  baseCurrencyCredit Decimal  @default(0) @db.Decimal(19, 4)
-  createdAt          DateTime @default(now())
+  fxRate             Decimal  @default(1) @db.Decimal(19, 6)  @map("fx_rate")
+  baseCurrencyDebit  Decimal  @default(0) @db.Decimal(19, 4)  @map("base_currency_debit")
+  baseCurrencyCredit Decimal  @default(0) @db.Decimal(19, 4)  @map("base_currency_credit")
+  createdAt          DateTime @default(now())  @map("created_at")
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account      Account      @relation(fields: [accountId], references: [id])

@@ -1,9 +1,9 @@
-// src/common/utils/pagination.util.ts
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+}
 
 export interface PaginationMeta {
-  total: number;
-  page: number;
-  limit: number;
   pages: number;
   hasNext: boolean;
   hasPrev: boolean;
@@ -11,15 +11,12 @@ export interface PaginationMeta {
 
 export interface PaginatedResult<T> {
   data: T[];
+  total: number;
+  page: number;
+  limit: number;
   meta: PaginationMeta;
 }
 
-export interface PaginationParams {
-  page?: number;
-  limit?: number;
-}
-
-/** Normalize page/limit from query params with safe defaults */
 export function parsePagination(params: PaginationParams): {
   page: number;
   limit: number;
@@ -31,38 +28,22 @@ export function parsePagination(params: PaginationParams): {
   return { page, limit, skip };
 }
 
-/** Build the meta object from total count + pagination params */
-export function buildMeta(total: number, page: number, limit: number): PaginationMeta {
-  const pages = Math.ceil(total / limit);
-  return {
-    total,
-    page,
-    limit,
-    pages,
-    hasNext: page < pages,
-    hasPrev: page > 1,
-  };
-}
-
-/** Wrap data + meta into a standard paginated response */
-export function paginate<T>(
-  data: T[],
-  total: number,
-  page: number,
-  limit: number,
-): PaginatedResult<T> {
-  return {
-    data,
-    meta: buildMeta(total, page, limit),
-  };
-}
-
-/** Alias for paginate function - builds a paginated result */
 export function buildPaginatedResult<T>(
   data: T[],
   total: number,
   page: number,
   limit: number,
 ): PaginatedResult<T> {
-  return paginate(data, total, page, limit);
+  const pages = Math.ceil(total / limit) || 1;
+  return {
+    data,
+    total,
+    page,
+    limit,
+    meta: {
+      pages,
+      hasNext: page < pages,
+      hasPrev: page > 1,
+    },
+  };
 }

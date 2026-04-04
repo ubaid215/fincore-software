@@ -3,7 +3,7 @@
 
 model Product {
   id                 String            @id @default(uuid())
-  organizationId     String
+  organizationId     String  @map("organization_id")
   code               String
   barcode            String?
   name               String
@@ -11,24 +11,24 @@ model Product {
   category           String?
   brand              String?
   unit               String
-  sellingPrice       Decimal           @db.Decimal(19, 4)
-  costPrice          Decimal           @db.Decimal(19, 4)
-  wholesalePrice     Decimal?          @db.Decimal(19, 4)
-  taxRate            Decimal           @default(0) @db.Decimal(5, 2)
-  currentStock       Int               @default(0)
-  minStockLevel      Int?
-  maxStockLevel      Int?
-  reorderQuantity    Int?
-  trackSerialNumbers Boolean           @default(false)
-  trackBatchNumbers  Boolean           @default(false)
-  trackExpiry        Boolean           @default(false)
-  isActive           Boolean           @default(true)
-  salesAccountId     String?
-  cogsAccountId      String?
-  inventoryAccountId String?
-  imageUrl           String?
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  sellingPrice       Decimal           @db.Decimal(19, 4)  @map("selling_price")
+  costPrice          Decimal           @db.Decimal(19, 4)  @map("cost_price")
+  wholesalePrice     Decimal?          @db.Decimal(19, 4)  @map("wholesale_price")
+  taxRate            Decimal           @default(0) @db.Decimal(5, 2)  @map("tax_rate")
+  currentStock       Int               @default(0)  @map("current_stock")
+  minStockLevel      Int?  @map("min_stock_level")
+  maxStockLevel      Int?  @map("max_stock_level")
+  reorderQuantity    Int?  @map("reorder_quantity")
+  trackSerialNumbers Boolean           @default(false)  @map("track_serial_numbers")
+  trackBatchNumbers  Boolean           @default(false)  @map("track_batch_numbers")
+  trackExpiry        Boolean           @default(false)  @map("track_expiry")
+  isActive           Boolean           @default(true)  @map("is_active")
+  salesAccountId     String?  @map("sales_account_id")
+  cogsAccountId      String?  @map("cogs_account_id")
+  inventoryAccountId String?  @map("inventory_account_id")
+  imageUrl           String?  @map("image_url")
+  createdAt          DateTime          @default(now())  @map("created_at")
+  updatedAt          DateTime          @updatedAt  @map("updated_at")
 
   organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salesAccount       Account?          @relation("ProductSalesAccount", fields: [salesAccountId], references: [id])
@@ -50,16 +50,16 @@ model Product {
 
 model InventoryBatch {
   id             String        @id @default(uuid())
-  organizationId String
-  productId      String
-  batchNumber    String
-  serialNumber   String?
+  organizationId String  @map("organization_id")
+  productId      String  @map("product_id")
+  batchNumber    String  @map("batch_number")
+  serialNumber   String?  @map("serial_number")
   quantity       Int
-  remainingQty   Int
-  costPrice      Decimal       @db.Decimal(19, 4)
-  purchaseDate   DateTime
-  expiryDate     DateTime?
-  createdAt      DateTime      @default(now())
+  remainingQty   Int  @map("remaining_qty")
+  costPrice      Decimal       @db.Decimal(19, 4)  @map("cost_price")
+  purchaseDate   DateTime  @map("purchase_date")
+  expiryDate     DateTime?  @map("expiry_date")
+  createdAt      DateTime      @default(now())  @map("created_at")
 
   product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
@@ -71,17 +71,17 @@ model InventoryBatch {
 
 model StockMovement {
   id             String            @id @default(uuid())
-  organizationId String
-  productId      String
-  batchId        String?
+  organizationId String  @map("organization_id")
+  productId      String  @map("product_id")
+  batchId        String?  @map("batch_id")
   movementType   StockMovementType
   quantity       Int
-  referenceId    String?
-  referenceType  String?
-  unitPrice      Decimal?          @db.Decimal(19, 4)
+  referenceId    String?  @map("reference_id")
+  referenceType  String?  @map("reference_type")
+  unitPrice      Decimal?          @db.Decimal(19, 4)  @map("unit_price")
   notes          String?
-  createdBy      String
-  createdAt      DateTime          @default(now())
+  createdBy      String  @map("created_by")
+  createdAt      DateTime          @default(now())  @map("created_at")
 
   organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -94,13 +94,13 @@ model StockMovement {
 
 model StockSnapshot {
   id             String   @id @default(uuid())
-  organizationId String
-  productId      String
-  asOfDate       DateTime
-  quantityOnHand Int
-  valueAtCost    Decimal  @db.Decimal(19, 4)
-  valueAtSelling Decimal  @db.Decimal(19, 4)
-  createdAt      DateTime @default(now())
+  organizationId String  @map("organization_id")
+  productId      String  @map("product_id")
+  asOfDate       DateTime  @map("as_of_date")
+  quantityOnHand Int  @map("quantity_on_hand")
+  valueAtCost    Decimal  @db.Decimal(19, 4)  @map("value_at_cost")
+  valueAtSelling Decimal  @db.Decimal(19, 4)  @map("value_at_selling")
+  createdAt      DateTime @default(now())  @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -111,23 +111,23 @@ model StockSnapshot {
 
 model PurchaseOrder {
   id             String              @id @default(uuid())
-  organizationId String
-  poNumber       String              @unique
-  vendorId       String?
-  vendorName     String
+  organizationId String  @map("organization_id")
+  poNumber       String              @unique  @map("po_number")
+  vendorId       String?  @map("vendor_id")
+  vendorName     String  @map("vendor_name")
   status         PurchaseOrderStatus @default(DRAFT)
-  orderDate      DateTime            @default(now())
-  expectedDate   DateTime?
+  orderDate      DateTime            @default(now())  @map("order_date")
+  expectedDate   DateTime?  @map("expected_date")
   subtotal       Decimal             @db.Decimal(19, 4)
-  taxAmount      Decimal             @default(0) @db.Decimal(19, 4)
-  totalAmount    Decimal             @db.Decimal(19, 4)
+  taxAmount      Decimal             @default(0) @db.Decimal(19, 4)  @map("tax_amount")
+  totalAmount    Decimal             @db.Decimal(19, 4)  @map("total_amount")
   notes          String?
-  approvedBy     String?
-  approvedAt     DateTime?
-  receivedBy     String?
-  receivedAt     DateTime?
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
+  approvedBy     String?  @map("approved_by")
+  approvedAt     DateTime?  @map("approved_at")
+  receivedBy     String?  @map("received_by")
+  receivedAt     DateTime?  @map("received_at")
+  createdAt      DateTime            @default(now())  @map("created_at")
+  updatedAt      DateTime            @updatedAt  @map("updated_at")
 
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vendor         Contact?            @relation("VendorPurchaseOrders", fields: [vendorId], references: [id])
@@ -139,13 +139,13 @@ model PurchaseOrder {
 
 model PurchaseOrderLine {
   id              String   @id @default(uuid())
-  purchaseOrderId String
-  productId       String
-  productCode     String
-  productName     String
+  purchaseOrderId String  @map("purchase_order_id")
+  productId       String  @map("product_id")
+  productCode     String  @map("product_code")
+  productName     String  @map("product_name")
   quantity        Int
-  receivedQty     Int      @default(0)
-  unitPrice       Decimal  @db.Decimal(19, 4)
+  receivedQty     Int      @default(0)  @map("received_qty")
+  unitPrice       Decimal  @db.Decimal(19, 4)  @map("unit_price")
   total           Decimal  @db.Decimal(19, 4)
 
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
@@ -157,24 +157,24 @@ model PurchaseOrderLine {
 
 model SaleOrder {
   id             String          @id @default(uuid())
-  organizationId String
-  soNumber       String          @unique
-  customerId     String?
-  customerName   String
+  organizationId String  @map("organization_id")
+  soNumber       String          @unique  @map("so_number")
+  customerId     String?  @map("customer_id")
+  customerName   String  @map("customer_name")
   status         SaleOrderStatus @default(DRAFT)
-  orderDate      DateTime        @default(now())
-  deliveryDate   DateTime?
+  orderDate      DateTime        @default(now())  @map("order_date")
+  deliveryDate   DateTime?  @map("delivery_date")
   subtotal       Decimal         @db.Decimal(19, 4)
-  taxAmount      Decimal         @default(0) @db.Decimal(19, 4)
-  totalAmount    Decimal         @db.Decimal(19, 4)
+  taxAmount      Decimal         @default(0) @db.Decimal(19, 4)  @map("tax_amount")
+  totalAmount    Decimal         @db.Decimal(19, 4)  @map("total_amount")
   notes          String?
-  approvedBy     String?
-  approvedAt     DateTime?
-  shippedBy      String?
-  shippedAt      DateTime?
-  invoiceId      String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  approvedBy     String?  @map("approved_by")
+  approvedAt     DateTime?  @map("approved_at")
+  shippedBy      String?  @map("shipped_by")
+  shippedAt      DateTime?  @map("shipped_at")
+  invoiceId      String?  @map("invoice_id")
+  createdAt      DateTime        @default(now())  @map("created_at")
+  updatedAt      DateTime        @updatedAt  @map("updated_at")
 
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   customer       Contact?        @relation("CustomerSaleOrders", fields: [customerId], references: [id])
@@ -186,13 +186,13 @@ model SaleOrder {
 
 model SaleOrderLine {
   id            String   @id @default(uuid())
-  saleOrderId   String
-  productId     String
-  productCode   String
-  productName   String
+  saleOrderId   String  @map("sale_order_id")
+  productId     String  @map("product_id")
+  productCode   String  @map("product_code")
+  productName   String  @map("product_name")
   quantity      Int
-  shippedQty    Int      @default(0)
-  unitPrice     Decimal  @db.Decimal(19, 4)
+  shippedQty    Int      @default(0)  @map("shipped_qty")
+  unitPrice     Decimal  @db.Decimal(19, 4)  @map("unit_price")
   total         Decimal  @db.Decimal(19, 4)
 
   saleOrder     SaleOrder @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)

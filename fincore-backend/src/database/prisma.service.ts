@@ -7,8 +7,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
 
   constructor() {
+    const connectionString = process.env.DATABASE_URL;
+
+    if (!connectionString) {
+      throw new Error(
+        'DATABASE_URL environment variable is not set. ' +
+          'Ensure your .env file is loaded before PrismaService is instantiated.',
+      );
+    }
+
     super({
-      adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+      adapter: new PrismaPg({ connectionString }),
     });
   }
 
@@ -47,8 +56,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       'plan',
       'organization',
       'user',
-    ];
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    for (const t of tables) await (this as any)[t].deleteMany();
+    ] as const;
+
+    for (const t of tables) {
+      await (this[t] as { deleteMany: () => Promise<unknown> }).deleteMany();
+    }
   }
 }

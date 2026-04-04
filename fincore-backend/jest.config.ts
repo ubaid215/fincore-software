@@ -6,6 +6,10 @@ const config: Config = {
   testRegex: '.*\\.spec\\.ts$',
   transform: { '^.+\\.(t|j)s$': 'ts-jest' },
   transformIgnorePatterns: ['node_modules/(?!(uuid|@otplib|otplib|@bundled-es-modules)/)'],
+
+  // Runs BEFORE any module is imported — this is critical
+  setupFiles: ['<rootDir>/test/setup-env.ts'],
+
   collectCoverageFrom: [
     'src/**/*.(t|j)s',
     '!src/main.ts',

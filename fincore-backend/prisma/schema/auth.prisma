@@ -6,13 +6,13 @@
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
-  passwordHash String
-  firstName    String
-  lastName     String
-  mfaEnabled   Boolean  @default(false)
-  mfaSecret    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  passwordHash String  @map("password_hash")
+  firstName    String  @map("first_name")
+  lastName     String  @map("last_name")
+  mfaEnabled   Boolean  @default(false)  @map("mfa_enabled")
+  mfaSecret    String?  @map("mfa_secret")
+  createdAt    DateTime @default(now())  @map("created_at")
+  updatedAt    DateTime @updatedAt  @map("updated_at")
 
   organizations   UserOrganization[]     // → workspace.prisma
   refreshTokens   RefreshToken[]
@@ -24,10 +24,10 @@ model User {
 
 model RefreshToken {
   id        String   @id @default(uuid())
-  userId    String
+  userId    String  @map("user_id")
   token     String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime @default(now())  @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -37,14 +37,14 @@ model RefreshToken {
 
 model Invite {
   id             String    @id @default(uuid())
-  organizationId String
-  invitedById    String?
+  organizationId String  @map("organization_id")
+  invitedById    String?  @map("invited_by_id")
   email          String
   role           UserRole
   token          String    @unique
-  expiresAt      DateTime
-  acceptedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  expiresAt      DateTime  @map("expires_at")
+  acceptedAt     DateTime?  @map("accepted_at")
+  createdAt      DateTime  @default(now())  @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id])  // → workspace.prisma
   invitedBy    User?        @relation("InviteSender", fields: [invitedById], references: [id])

@@ -8,12 +8,12 @@ model Organization {
   email         String
   timezone      String    @default("UTC")
   currency      String    @default("PKR")
-  fiscalYearEnd Int       @default(12)
+  fiscalYearEnd Int       @default(12)  @map("fiscal_year_end")
   status        OrgStatus @default(ACTIVE)
   // FIX: Added config Json field — onboarding.service.ts reads/writes onboardingCompleted here
   config        Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime  @default(now())  @map("created_at")
+  updatedAt     DateTime  @updatedAt  @map("updated_at")
 
   // Auth domain
   members  UserOrganization[]
@@ -58,10 +58,10 @@ model Organization {
 
 model UserOrganization {
   id             String   @id @default(uuid())
-  userId         String
-  organizationId String
+  userId         String  @map("user_id")
+  organizationId String  @map("organization_id")
   role           UserRole @default(VIEWER)
-  createdAt      DateTime @default(now())
+  createdAt      DateTime @default(now())  @map("created_at")
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

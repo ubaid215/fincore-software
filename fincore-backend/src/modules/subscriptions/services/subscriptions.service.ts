@@ -1,21 +1,5 @@
 /**
  * src/modules/subscriptions/services/subscriptions.service.ts
- *
- * Subscription lifecycle management with a full state machine.
- *
- * Dependency chain (no circular imports):
- *   FeatureFlagsService → SubscriptionsService → PrismaService + Redis
- *   SubscriptionsService does NOT import FeatureFlagsService.
- *   Cache invalidation is done directly via Redis.
- *
- * State machine:
- *   TRIALING  → ACTIVE | SUSPENDED | CANCELED
- *   ACTIVE    → PAST_DUE | CANCELED
- *   PAST_DUE  → ACTIVE | SUSPENDED | CANCELED
- *   SUSPENDED → ACTIVE | CANCELED
- *   CANCELED  → (terminal)
- *
- * Sprint: S4 · Week 9–10
  */
 
 import {
