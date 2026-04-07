@@ -38,16 +38,12 @@ async function bootstrap() {
     .setVersion('1.0')
     .addBearerAuth()
     .build();
-  SwaggerModule.setup(
-    'docs',
-    app,
-    SwaggerModule.createDocument(app, swaggerConfig),
-  );
+  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
 
-  const port = config.get<number>('app.port', 3000);
+  const port = config.get<number>('app.port', 4000);
   await app.listen(port);
   console.log(`🚀 FinCore API → http://localhost:${port}/v1`);
   console.log(`📚 Swagger docs → http://localhost:${port}/docs`);
 }
 
-bootstrap();
+void bootstrap();

@@ -20,11 +20,11 @@ export function SignupForm() {
       password: '',
       firstName: '',
       lastName: '',
-      organizationName: '',
     },
   })
 
   const onSubmit = (data: SignupFormData) => {
+    console.log('Sending signup data:', data)
     signup.mutate(data)
   }
 
@@ -54,18 +54,11 @@ export function SignupForm() {
       />
 
       <Input
-        label="Organization name"
-        placeholder="Acme Inc."
-        error={errors.organizationName?.message}
-        {...register('organizationName')}
-      />
-
-      <Input
         label="Password"
         type="password"
         placeholder="••••••••"
         error={errors.password?.message}
-        hint="At least 8 characters"
+        hint="At least 8 characters with uppercase, lowercase, and number"
         {...register('password')}
       />
 

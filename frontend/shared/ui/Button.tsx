@@ -6,6 +6,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md' | 'lg'
   loading?: boolean
   fullWidth?: boolean
+  fullWidthMobile?: boolean
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -16,6 +17,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       size = 'md',
       loading = false,
       fullWidth = false,
+      fullWidthMobile = false,
       className,
       disabled,
       ...props
@@ -31,9 +33,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     }
 
     const sizes = {
-      sm: 'h-8 px-3 text-sm gap-1.5',
-      md: 'h-10 px-4 text-base gap-2',
-      lg: 'h-12 px-6 text-lg gap-2.5',
+      sm: 'h-8 px-3 text-sm gap-1.5 min-h-[32px]',
+      md: 'h-10 px-4 text-base gap-2 min-h-[40px]',
+      lg: 'h-12 px-6 text-lg gap-2.5 min-h-[48px]',
     }
 
     const iconSize = {
@@ -54,7 +56,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           variants[variant],
           sizes[size],
           fullWidth && 'w-full',
+          fullWidthMobile && 'w-full sm:w-auto',
           variant === 'icon' && 'px-0 aspect-square',
+          // Touch-friendly on mobile
+          'min-h-[44px] sm:min-h-0',
           className,
         )}
         {...props}
@@ -81,7 +86,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             />
           </svg>
         )}
-        <span className={cn(loading && 'opacity-0')}>{children}</span>
+        <span className={cn(loading && 'opacity-0', 'flex items-center justify-center gap-2')}>
+          {children}
+        </span>
       </button>
     )
   },

@@ -11,7 +11,7 @@ export interface ModalProps {
   title?: string
   description?: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   showCloseButton?: boolean
 }
 
@@ -20,6 +20,7 @@ const sizes = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  full: 'max-w-[95vw] sm:max-w-4xl',
 }
 
 export function Modal({
@@ -41,7 +42,11 @@ export function Modal({
             'bg-white rounded-lg shadow-xl duration-200 data-[state=open]:animate-in',
             'data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
             'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            // Responsive sizing
+            'w-[calc(100%-2rem)] sm:w-full',
             sizes[size],
+            // Mobile optimizations
+            'max-h-[90vh] overflow-y-auto',
           )}
         >
           {showCloseButton && (
@@ -49,16 +54,16 @@ export function Modal({
               <Button
                 variant="icon"
                 size="sm"
-                className="absolute right-4 top-4"
+                className="absolute right-3 top-3 sm:right-4 sm:top-4"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </Button>
             </Dialog.Close>
           )}
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {title && (
-              <Dialog.Title className="text-lg font-semibold text-text-primary mb-2">
+              <Dialog.Title className="text-base sm:text-lg font-semibold text-text-primary mb-2">
                 {title}
               </Dialog.Title>
             )}

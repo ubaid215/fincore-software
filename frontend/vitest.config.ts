@@ -8,9 +8,22 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./testing/setup.ts'],
+    
+    pool: 'vmThreads',  // or 'forks' or 'threads'
+    isolate: false,
+    maxWorkers: 1,  // Replaces maxThreads/maxForks
+    
+    
+    server: {
+      deps: {
+        inline: true,  // Inline all deps to avoid ESM issues
+      },
+    },
+    
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
+      include: ['modules/**/*.{test,spec}.{ts,tsx}', 'shared/**/*.{test,spec}.{ts,tsx}'],
       thresholds: {
         statements: 80,
         branches: 80,
@@ -35,9 +48,11 @@ export default defineConfig({
         '**/*.config.*',
         '**/types/**',
         '**/index.ts',
+        '**/e2e/**',
       ],
     },
     include: ['**/*.{test,spec}.{ts,tsx}'],
+    exclude: ['**/e2e/**', '**/node_modules/**'],
   },
   resolve: {
     alias: {

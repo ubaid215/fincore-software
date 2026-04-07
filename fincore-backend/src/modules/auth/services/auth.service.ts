@@ -79,6 +79,71 @@ export class AuthService {
     return this.issueTokenPair(user.id, user.email);
   }
 
+  // Add this method to your AuthService class
+
+  async getUserOrganizations(userId: string) {
+    const memberships = await this.prisma.userOrganization.findMany({
+      where: { userId },
+      include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
+    });
+
+    // If user has no organizations yet, create a default one
+    if (memberships.length === 0) {
+      // Create a default organization for the user
+      const organization = await this.prisma.organization.create({
+        data: {
+          name: `${await this.getUserFullName(userId)}'s Organization`,
+          slug: `org-${userId.slice(0, 8)}`,
+          currency: 'USD',
+          timezone: 'UTC',
+          country: 'US',
+        },
+      });
+
+      await this.prisma.userOrganization.create({
+        data: {
+          userId,
+          organizationId: organization.id,
+          role: 'OWNER',
+          isDefault: true,
+        },
+      });
+
+      return [
+        {
+          organizationId: organization.id,
+          organizationName: organization.name,
+          role: 'OWNER',
+          isDefault: true,
+        },
+      ];
+    }
+
+    return memberships.map((m) => ({
+      organizationId: m.organization.id,
+      organizationName: m.organization.name,
+      role: m.role,
+      isDefault: m.isDefault || false,
+    }));
+  }
+
+  // Helper method to get user's full name
+  private async getUserFullName(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true },
+    });
+    return `${user?.firstName || 'User'} ${user?.lastName || ''}`.trim();
+  }
+
   async logout(refreshToken: string): Promise<{ success: true }> {
     await this.prisma.refreshToken.deleteMany({ where: { token: refreshToken } });
     return { success: true };

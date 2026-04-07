@@ -14,7 +14,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     private prisma: PrismaService,
   ) {
     const algorithm = config.get<string>('auth.jwtAlgorithm', 'RS256') as Algorithm;
-    const publicKey = config.getOrThrow<string>('auth.jwtPublicKey');
+    const publicKey = config.get<string>('auth.jwtPublicKey');
+
+    if (!publicKey) {
+      throw new Error('Missing required config: auth.jwtPublicKey');
+    }
 
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),

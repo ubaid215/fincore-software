@@ -41,6 +41,14 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Get('organizations')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Get user's organization memberships" })
+  @ApiResponse({ status: 200, description: 'List of organizations the user belongs to' })
+  async getMyOrganizations(@CurrentUser() user: JwtPayload) {
+    return this.authService.getUserOrganizations(user.sub);
+  }
+
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)

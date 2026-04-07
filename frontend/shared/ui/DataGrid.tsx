@@ -46,6 +46,7 @@ export interface DataGridProps<TData> {
   emptyState?: React.ReactNode
   className?: string
   rowClassName?: (row: TData) => string
+  responsive?: boolean
 }
 
 export function DataGrid<TData>({
@@ -61,6 +62,7 @@ export function DataGrid<TData>({
   emptyState,
   className,
   rowClassName,
+  responsive = true,
 }: DataGridProps<TData>) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([])
   const [internalPagination, setInternalPagination] = useState<PaginationState>({
@@ -103,12 +105,12 @@ export function DataGrid<TData>({
     return (
       <div className="rounded-lg border border-border bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="min-w-full sm:w-full">
             <thead className="bg-surface border-b border-border">
               <tr>
                 {columns.map((col, idx) => (
-                  <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
-                    <Skeleton className="h-4 w-20" />
+                  <th key={idx} className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
+                    <Skeleton className="h-4 w-16 sm:w-20" />
                   </th>
                 ))}
               </tr>
@@ -117,7 +119,7 @@ export function DataGrid<TData>({
               {Array.from({ length: 5 }).map((_, idx) => (
                 <tr key={idx} className="border-b border-border">
                   {columns.map((col, colIdx) => (
-                    <td key={colIdx} className="px-4 py-3">
+                    <td key={colIdx} className="px-3 sm:px-4 py-2 sm:py-3">
                       <Skeleton className="h-4 w-full" />
                     </td>
                   ))}
@@ -135,8 +137,8 @@ export function DataGrid<TData>({
     return (
       <div className="rounded-lg border border-border bg-white">
         {emptyState || (
-          <div className="py-12 text-center">
-            <p className="text-text-tertiary">No data available</p>
+          <div className="py-8 sm:py-12 text-center">
+            <p className="text-sm sm:text-base text-text-tertiary">No data available</p>
           </div>
         )}
       </div>
@@ -145,15 +147,16 @@ export function DataGrid<TData>({
 
   return (
     <div className={cn('rounded-lg border border-border bg-white overflow-hidden', className)}>
-      <div className="overflow-x-auto">
-        <table className="w-full">
+      {/* Responsive wrapper */}
+      <div className={cn(responsive && 'overflow-x-auto', '-webkit-overflow-scrolling-touch')}>
+        <table className="min-w-[640px] sm:w-full">
           <thead className="bg-surface border-b border-border">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider"
+                    className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider whitespace-nowrap"
                     style={{ width: header.getSize() }}
                   >
                     {header.isPlaceholder ? null : (
@@ -188,7 +191,7 @@ export function DataGrid<TData>({
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 text-sm text-text-secondary">
+                  <td key={cell.id} className="px-3 sm:px-4 py-2 sm:py-3 text-sm text-text-secondary">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -198,11 +201,11 @@ export function DataGrid<TData>({
         </table>
       </div>
 
-      {/* Pagination */}
+      {/* Responsive Pagination */}
       {useExternalPagination && (
-        <div className="flex items-center justify-between border-t border-border px-4 py-3 bg-surface">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-text-tertiary">Rows per page</span>
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border px-3 sm:px-4 py-3 bg-surface">
+          <div className="flex items-center gap-2 order-2 sm:order-1">
+            <span className="text-xs sm:text-sm text-text-tertiary">Rows per page</span>
             <Select
               options={[
                 { value: '25', label: '25' },
@@ -220,8 +223,8 @@ export function DataGrid<TData>({
               className="w-20"
             />
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-text-tertiary">
+          <div className="flex items-center gap-2 order-1 sm:order-2">
+            <span className="text-xs sm:text-sm text-text-tertiary">
               Page {pagination.pageIndex + 1} of {pagination.pageCount}
             </span>
             <Button

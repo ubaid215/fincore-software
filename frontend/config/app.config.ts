@@ -5,7 +5,7 @@
 
 // --- Environment ---
 export const env = {
-  apiUrl:   process.env.NEXT_PUBLIC_API_URL   ?? 'http://localhost:3001',
+  apiUrl:   process.env.NEXT_PUBLIC_API_URL   ?? 'http://localhost:4000/v1',
   appUrl:   process.env.NEXT_PUBLIC_APP_URL   ?? 'http://localhost:3000',
   sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN ?? '',
   s3BucketUrl: process.env.NEXT_PUBLIC_S3_BUCKET_URL ?? '',

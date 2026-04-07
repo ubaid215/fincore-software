@@ -6,6 +6,7 @@ interface AuthState {
   // State
   user: AuthUser | null
   accessToken: string | null
+  refreshToken: string | null  // Add this
   userMemberships: OrganizationMembership[] | null
   activeOrganizationId: string | null
   isInitialized: boolean
@@ -14,6 +15,7 @@ interface AuthState {
   // Actions
   setUser: (user: AuthUser | null) => void
   setAccessToken: (token: string | null) => void
+  setRefreshToken: (token: string | null) => void  // Add this
   setUserMemberships: (memberships: OrganizationMembership[] | null) => void
   setActiveOrganizationId: (orgId: string | null) => void
   setInitialized: (initialized: boolean) => void
@@ -28,6 +30,7 @@ export const useAuthStore = create<AuthState>()(
       // State
       user: null,
       accessToken: null,
+      refreshToken: null,  // Add this
       userMemberships: null,
       activeOrganizationId: null,
       isInitialized: false,
@@ -36,6 +39,7 @@ export const useAuthStore = create<AuthState>()(
       // Actions
       setUser: (user) => set({ user }),
       setAccessToken: (accessToken) => set({ accessToken }),
+      setRefreshToken: (refreshToken) => set({ refreshToken }),  // Add this
       setUserMemberships: (userMemberships) => set({ userMemberships }),
       setActiveOrganizationId: (activeOrganizationId) => set({ activeOrganizationId }),
       setInitialized: (isInitialized) => set({ isInitialized }),
@@ -44,13 +48,13 @@ export const useAuthStore = create<AuthState>()(
         set({
           user: null,
           accessToken: null,
+          refreshToken: null,
           userMemberships: null,
           activeOrganizationId: null,
           isInitialized: false,
         }),
       logout: async () => {
         try {
-          // Call logout API to clear HTTP-only cookie
           await fetch('/api/auth/logout', { method: 'POST' })
         } catch (error) {
           console.error('Logout error:', error)
@@ -58,11 +62,11 @@ export const useAuthStore = create<AuthState>()(
           set({
             user: null,
             accessToken: null,
+            refreshToken: null,
             userMemberships: null,
             activeOrganizationId: null,
             isInitialized: false,
           })
-          // Clear localStorage
           localStorage.removeItem('fincore:activeOrgId')
         }
       },
@@ -73,6 +77,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         userMemberships: state.userMemberships,
         activeOrganizationId: state.activeOrganizationId,
+        refreshToken: state.refreshToken,  // Add this
       }),
     },
   ),

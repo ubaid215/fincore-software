@@ -1,3 +1,4 @@
+'use client'
 // Store
 export { useAuthStore } from './store/auth.store'
 

@@ -10,6 +10,7 @@ export interface ToastProps {
   variant?: 'success' | 'error' | 'warning' | 'info'
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  duration?: number
 }
 
 const icons = {
@@ -33,17 +34,20 @@ const iconColors = {
   info: 'text-info',
 }
 
-export function Toast({ title, description, variant = 'info', open, onOpenChange }: ToastProps) {
+export function Toast({ title, description, variant = 'info', open, onOpenChange, duration = 3000 }: ToastProps) {
   const Icon = icons[variant]
 
   return (
     <ToastPrimitive.Root
       open={open}
       onOpenChange={onOpenChange}
+      duration={duration}
       className={cn(
-        'relative flex w-full max-w-sm items-start gap-3 rounded-lg border p-4 shadow-lg',
+        'relative flex w-full max-w-[calc(100vw-2rem)] sm:max-w-sm items-start gap-3 rounded-lg border p-4 shadow-lg',
         'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
-        'data-[state=open]:slide-in-from-right-full data-[state=closed]:slide-out-to-right-full',
+        'data-[state=open]:slide-in-from-bottom-full sm:data-[state=open]:slide-in-from-right-full',
+        'data-[state=closed]:slide-out-to-right-full',
+        'sm:data-[state=open]:slide-in-from-right-full',
         variants[variant],
       )}
     >
@@ -60,9 +64,16 @@ export function Toast({ title, description, variant = 'info', open, onOpenChange
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
-  return <ToastPrimitive.Provider>{children}</ToastPrimitive.Provider>
+  return <ToastPrimitive.Provider swipeDirection="right">{children}</ToastPrimitive.Provider>
 }
 
 export const ToastViewport = () => (
-  <ToastPrimitive.Viewport className="fixed bottom-0 right-0 z-50 flex flex-col gap-2 p-4 max-w-full w-full sm:max-w-sm" />
+  <ToastPrimitive.Viewport 
+    className={cn(
+      'fixed z-50 flex flex-col gap-2 p-4',
+      'bottom-0 right-0 left-0 sm:left-auto',
+      'max-w-full w-full sm:max-w-sm',
+      'mx-auto sm:mx-0'
+    )} 
+  />
 )

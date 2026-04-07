@@ -67,40 +67,56 @@ export function DateRangePicker({ value, onChange, label, className }: DateRange
         className={cn(
           'flex w-full items-center justify-between rounded-md border border-border bg-white px-3 py-2 text-sm',
           'text-text-primary hover:border-border-2 transition-colors',
+          'min-h-[40px] sm:min-h-0',
         )}
       >
-        <span className="text-text-tertiary">{displayText}</span>
-        <Calendar className="h-4 w-4 text-text-tertiary" />
+        <span className="text-text-tertiary truncate">{displayText}</span>
+        <Calendar className="h-4 w-4 text-text-tertiary shrink-0 ml-2" />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-1 rounded-md border border-border bg-white p-4 shadow-md">
-          <div className="flex gap-4">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
-              <input
-                type="date"
-                value={value.from || ''}
-                onChange={handleFromChange}
-                className="rounded border border-border px-2 py-1 text-sm"
-              />
+        <>
+          {/* Backdrop for mobile */}
+          <div 
+            className="fixed inset-0 z-40 bg-black/20 sm:hidden"
+            onClick={() => setIsOpen(false)}
+          />
+          <div className={cn(
+            'z-50 rounded-md border border-border bg-white p-4 shadow-md',
+            'fixed bottom-0 left-0 right-0 sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-full sm:mt-1',
+            'rounded-t-xl sm:rounded-md',
+            'animate-in slide-in-from-bottom sm:slide-in-from-top-2'
+          )}>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-text-secondary mb-1">From</label>
+                <input
+                  type="date"
+                  value={value.from || ''}
+                  onChange={handleFromChange}
+                  className="w-full rounded border border-border px-2 py-1.5 text-sm"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
+                <input
+                  type="date"
+                  value={value.to || ''}
+                  onChange={handleToChange}
+                  className="w-full rounded border border-border px-2 py-1.5 text-sm"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">To</label>
-              <input
-                type="date"
-                value={value.to || ''}
-                onChange={handleToChange}
-                className="rounded border border-border px-2 py-1 text-sm"
-              />
+            <div className="mt-3 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={handleClear}>
+                Clear
+              </Button>
+              <Button size="sm" onClick={() => setIsOpen(false)}>
+                Apply
+              </Button>
             </div>
           </div>
-          <div className="mt-3 flex justify-end">
-            <Button variant="ghost" size="sm" onClick={handleClear}>
-              Clear
-            </Button>
-          </div>
-        </div>
+        </>
       )}
     </div>
   )

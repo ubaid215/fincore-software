@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 // Routes accessible without authentication
 const PUBLIC_ROUTES = new Set([
@@ -7,6 +7,13 @@ const PUBLIC_ROUTES = new Set([
   '/forgot-password',
   '/reset-password',
   '/invite',
+  // Marketing pages - add these
+  '/home',
+  '/pricing',
+  '/features',
+  '/about',
+  '/contact',
+  '/blog',
 ])
 
 // Routes that bypass all auth checks
@@ -16,6 +23,8 @@ const BYPASS_ROUTES = [
   '/favicon',
   '/robots',
   '/sitemap',
+  '/sw.js',
+  '/legal/',      // Add legal routes
 ]
 
 export function proxy(request: NextRequest) {
@@ -26,7 +35,12 @@ export function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Public marketing pages
+  // Public marketing pages - allow all marketing routes
+  if (PUBLIC_ROUTES.has(pathname) || pathname.startsWith('/blog/') || pathname.startsWith('/legal/')) {
+    return NextResponse.next()
+  }
+
+  // Root redirect
   if (pathname === '/') {
     return NextResponse.next()
   }
@@ -45,14 +59,14 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard/select', request.url))
   }
 
-  // Tenant-scoped route guard — /dashboard/[orgId]/*
+  // Tenant-scoped route guard
   const orgMatch = pathname.match(/^\/dashboard\/([a-zA-Z0-9_-]+)/)
   if (orgMatch && orgMatch[1] !== 'select') {
     const orgId = orgMatch[1]
-    const allowedOrgs = request.cookies.get('fincore_orgs')?.value?.split(',') ?? []
+    const allowedOrgsCookie = request.cookies.get('fincore_orgs')
+    const allowedOrgs = allowedOrgsCookie?.value?.split(',') ?? []
 
     if (allowedOrgs.length > 0 && !allowedOrgs.includes(orgId)) {
-      // Org not in user's list → back to org selector
       return NextResponse.redirect(new URL('/dashboard/select', request.url))
     }
   }
@@ -62,12 +76,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - Public file extensions
-     */
-    '/((?!_next/static|_next/image|.*\\.(?:ico|png|svg|jpg|jpeg|webp|woff2|woff|ttf)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:ico|png|svg|jpg|jpeg|webp|woff2|woff|ttf)).*)',
   ],
 }

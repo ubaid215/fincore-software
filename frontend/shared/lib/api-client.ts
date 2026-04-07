@@ -2,6 +2,9 @@ import axios, { type AxiosError, type AxiosInstance, type InternalAxiosRequestCo
 import { env, API } from '@/config/app.config'
 import type { ApiError } from '@/shared/types'
 
+// Import store dynamically to avoid circular dependencies
+import { useAuthStore } from '@/modules/auth/store/auth.store'
+
 // ─── Token refresh queue ─────────────────────────────────────
 let isRefreshing = false
 let failedQueue: Array<{
@@ -41,10 +44,8 @@ export const apiClient: AxiosInstance = axios.create({
 // ─── Request interceptor ────────────────────────────────────
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Access token from Zustand — lazy import to avoid circular deps
-    // The store is loaded at runtime, not at module init time
+    // Access token from Zustand
     try {
-      const { useAuthStore } = require('@/modules/auth/store/auth.store')
       const { accessToken, activeOrganizationId } = useAuthStore.getState()
 
       if (accessToken) {
@@ -83,24 +84,29 @@ apiClient.interceptors.response.use(
       isRefreshing = true
 
       try {
+        // Get refresh token from store
+        const { refreshToken } = useAuthStore.getState()
+        
         // Refresh endpoint uses the HTTP-only cookie automatically
         const { data } = await axios.post<{ accessToken: string }>(
           `${env.apiUrl}/auth/refresh`,
-          {},
+          { refreshToken },
           { withCredentials: true },
         )
 
-        const { useAuthStore } = require('@/modules/auth/store/auth.store')
+        // Update store with new access token
         useAuthStore.getState().setAccessToken(data.accessToken)
-        processQueue(null, data.accessToken)
 
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`
+        
+        // Process queued requests with the new token
+        processQueue(null, data.accessToken)
+        
         return apiClient(originalRequest)
       } catch (refreshError) {
         processQueue(refreshError, null)
 
         // Refresh failed → log out
-        const { useAuthStore } = require('@/modules/auth/store/auth.store')
         useAuthStore.getState().clearAuth()
 
         if (typeof window !== 'undefined') {

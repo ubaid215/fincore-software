@@ -1,10 +1,22 @@
 'use client'
 
-import { QueryClientProvider } from '@tanstack/react-query'
+import { useState } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ToastProvider, ToastViewport } from '@/shared/ui'
-import { queryClient } from '@/shared/lib/query-client'
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000,
+            retry: false,
+          },
+        },
+      }),
+  )
+
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>

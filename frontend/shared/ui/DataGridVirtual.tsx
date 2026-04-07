@@ -37,6 +37,7 @@ export interface DataGridVirtualProps<TData> {
   onEndReached?: () => void
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
+  responsive?: boolean
 }
 
 export function DataGridVirtual<TData>({
@@ -54,6 +55,7 @@ export function DataGridVirtual<TData>({
   onEndReached,
   hasNextPage = false,
   isFetchingNextPage = false,
+  responsive = true,
 }: DataGridVirtualProps<TData>) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([])
   const [internalFilters, setInternalFilters] = useState<ColumnFiltersState>([])
@@ -78,7 +80,6 @@ export function DataGridVirtual<TData>({
 
   const { rows } = table.getRowModel()
 
-  // Virtual scroll
   const rowVirtualizer = useVirtualizer({
     count: hasNextPage ? rows.length + 1 : rows.length,
     getScrollElement: () => tableContainerRef.current,
@@ -86,7 +87,6 @@ export function DataGridVirtual<TData>({
     overscan,
   })
 
-  // Infinite scroll detection
   useEffect(() => {
     if (!onEndReached || !hasNextPage || isFetchingNextPage) return
 
@@ -99,17 +99,16 @@ export function DataGridVirtual<TData>({
     }
   }, [rows.length, rowVirtualizer.getVirtualItems(), onEndReached, hasNextPage, isFetchingNextPage])
 
-  // Loading skeleton
   if (isLoading) {
     return (
       <div className="rounded-lg border border-border bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="min-w-[640px] sm:w-full">
             <thead className="bg-surface border-b border-border">
               <tr>
                 {columns.map((col, idx) => (
-                  <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
-                    <Skeleton className="h-4 w-20" />
+                  <th key={idx} className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider">
+                    <Skeleton className="h-4 w-16 sm:w-20" />
                   </th>
                 ))}
               </tr>
@@ -118,7 +117,7 @@ export function DataGridVirtual<TData>({
               {Array.from({ length: 10 }).map((_, idx) => (
                 <tr key={idx} className="border-b border-border">
                   {columns.map((col, colIdx) => (
-                    <td key={colIdx} className="px-4 py-3">
+                    <td key={colIdx} className="px-3 sm:px-4 py-2 sm:py-3">
                       <Skeleton className="h-4 w-full" />
                     </td>
                   ))}
@@ -131,13 +130,12 @@ export function DataGridVirtual<TData>({
     )
   }
 
-  // Empty state
   if (!isLoading && data.length === 0) {
     return (
       <div className="rounded-lg border border-border bg-white">
         {emptyState || (
-          <div className="py-12 text-center">
-            <p className="text-text-tertiary">No data available</p>
+          <div className="py-8 sm:py-12 text-center">
+            <p className="text-sm sm:text-base text-text-tertiary">No data available</p>
           </div>
         )}
       </div>
@@ -150,19 +148,22 @@ export function DataGridVirtual<TData>({
   return (
     <div
       ref={tableContainerRef}
-      className={cn('rounded-lg border border-border bg-white overflow-auto', className)}
-      style={{ height: '100%', maxHeight: '600px' }}
+      className={cn(
+        'rounded-lg border border-border bg-white overflow-auto',
+        'touch-scroll',
+        className
+      )}
+      style={{ height: '100%', maxHeight: '400px' }}
     >
-      <div className="relative w-full">
-        <table className="w-full">
-          {/* Sticky Header */}
+      <div className={cn(responsive && 'min-w-[640px]')}>
+        <table className={cn(!responsive && 'w-full')}>
           <thead className="sticky top-0 z-10 bg-surface border-b border-border">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider"
+                    className="px-3 sm:px-4 py-2 sm:py-3 text-left text-xs font-medium text-text-tertiary uppercase tracking-wider whitespace-nowrap"
                     style={{ width: header.getSize() }}
                   >
                     {header.isPlaceholder ? null : (
@@ -188,7 +189,6 @@ export function DataGridVirtual<TData>({
             ))}
           </thead>
 
-          {/* Virtualized Body */}
           <tbody>
             <tr style={{ height: `${virtualRows[0]?.start ?? 0}px` }} />
             {virtualRows.map((virtualRow) => {
@@ -198,10 +198,10 @@ export function DataGridVirtual<TData>({
               if (isLoaderRow) {
                 return (
                   <tr key={`loader-${virtualRow.index}`} className="border-b border-border">
-                    <td colSpan={columns.length} className="px-4 py-3 text-center">
+                    <td colSpan={columns.length} className="px-3 sm:px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-2 py-2">
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
-                        <span className="text-sm text-text-tertiary">Loading more...</span>
+                        <div className="h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+                        <span className="text-xs sm:text-sm text-text-tertiary">Loading more...</span>
                       </div>
                     </td>
                   </tr>
@@ -221,7 +221,7 @@ export function DataGridVirtual<TData>({
                   }}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-3 text-sm text-text-secondary">
+                    <td key={cell.id} className="px-3 sm:px-4 py-2 sm:py-3 text-sm text-text-secondary">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
