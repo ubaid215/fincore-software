@@ -12,40 +12,40 @@ import type { PaginatedResponse } from '@/shared/types'
 export const payrollApi = {
   // Employees
   listEmployees: (orgId: string, filters?: EmployeeFilters) =>
-    apiClient.get<PaginatedResponse<Employee>>(`/organizations/${orgId}/payroll/employees`, {
+    apiClient.get<PaginatedResponse<Employee>>(`/v1/payroll/employees`, {
       params: filters,
     }),
 
   getEmployee: (orgId: string, id: string) =>
-    apiClient.get<Employee>(`/organizations/${orgId}/payroll/employees/${id}`),
+    apiClient.get<Employee>(`/v1/payroll/employees/${id}`),
 
   createEmployee: (orgId: string, data: CreateEmployeeRequest) =>
-    apiClient.post<Employee>(`/organizations/${orgId}/payroll/employees`, data),
+    apiClient.post<Employee>(`/v1/payroll/employees`, data),
 
   updateEmployee: (orgId: string, id: string, data: UpdateEmployeeRequest) =>
-    apiClient.patch<Employee>(`/organizations/${orgId}/payroll/employees/${id}`, data),
+    apiClient.patch<Employee>(`/v1/payroll/employees/${id}`, data),
 
   deleteEmployee: (orgId: string, id: string) =>
-    apiClient.delete(`/organizations/${orgId}/payroll/employees/${id}`),
+    apiClient.delete(`/v1/payroll/employees/${id}`),
 
   // Payruns
   listPayruns: (orgId: string, page?: number, limit?: number) =>
-    apiClient.get<PaginatedResponse<Payrun>>(`/organizations/${orgId}/payroll/payruns`, {
+    apiClient.get<PaginatedResponse<Payrun>>(`/v1/payroll/payruns`, {
       params: { page, limit },
     }),
 
   getPayrun: (orgId: string, id: string) =>
-    apiClient.get<Payrun>(`/organizations/${orgId}/payroll/payruns/${id}`),
+    apiClient.get<Payrun>(`/v1/payroll/payruns/${id}`),
 
   createPayrun: (orgId: string, data: CreatePayrunRequest) =>
-    apiClient.post<Payrun>(`/organizations/${orgId}/payroll/payruns`, data),
+    apiClient.post<Payrun>(`/v1/payroll/payruns`, data),
 
   processPayrun: (orgId: string, id: string) =>
-    apiClient.post<Payrun>(`/organizations/${orgId}/payroll/payruns/${id}/process`, {}),
+    apiClient.post<Payrun>(`/v1/payroll/payruns/${id}/process`, {}),
 
   postPayrun: (orgId: string, id: string) =>
-    apiClient.post<Payrun>(`/organizations/${orgId}/payroll/payruns/${id}/post`, {}),
+    apiClient.post<Payrun>(`/v1/payroll/payruns/${id}/post`, {}),
 
   cancelPayrun: (orgId: string, id: string) =>
-    apiClient.post<Payrun>(`/organizations/${orgId}/payroll/payruns/${id}/cancel`, {}),
+    apiClient.post<Payrun>(`/v1/payroll/payruns/${id}/cancel`, {}),
 }

@@ -1,6 +1,18 @@
 // src/modules/auth/dto/register.dto.ts
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, MinLength, MaxLength, Matches } from 'class-validator';
+//
+// FIX: Added phone (optional), missing from original.
+//      Step-2 org fields are in a separate OnboardOrgDto below.
+//
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsEmail,
+  IsString,
+  IsOptional,
+  MinLength,
+  MaxLength,
+  Matches,
+  IsPhoneNumber,
+} from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'ubaid@fincore.app' })
@@ -12,8 +24,7 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(64)
   @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
-    message:
-      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+    message: 'Password must contain at least one uppercase, one lowercase, and one digit',
   })
   password!: string;
 
@@ -28,4 +39,13 @@ export class RegisterDto {
   @MinLength(1)
   @MaxLength(50)
   lastName!: string;
+
+  @ApiPropertyOptional({
+    example: '+923001234567',
+    description: 'Optional — used for future SMS 2FA',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phone?: string;
 }

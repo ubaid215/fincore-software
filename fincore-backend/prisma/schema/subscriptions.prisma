@@ -1,42 +1,80 @@
+// ============================================================
 // prisma/schema/subscriptions.prisma
-// Domain: Subscription & Plans
-// Owner:  Billing team
-// Models: Plan, Subscription
+// Domain : Subscription & Plans
+// Covers : Plan · PlanLimit · Subscription · Usage tracking
+// ============================================================
 
 model Plan {
-  id           String   @id @default(uuid())
-  name         String   @unique  // STARTER | PROFESSIONAL | ENTERPRISE
-  displayName  String
-  priceMonthly Decimal  @db.Decimal(10, 2)
-  currency     String   @default("PKR")
-  maxSeats     Int
-  features     Json     // string[] — list of feature keys
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default(uuid())
+  name          String   @unique                   // "FREE" | "STARTER" | "PRO" | "ENTERPRISE"
+  displayName   String   @map("display_name")
+  priceMonthly  Decimal  @db.Decimal(10, 2) @map("price_monthly")
+  priceYearly   Decimal? @db.Decimal(10, 2) @map("price_yearly")
+  currency      String   @default("PKR")
+  maxSeats      Int      @map("max_seats")
+  features      Json                               // string[] of FeatureKey constants
+  isActive      Boolean  @default(true) @map("is_active")
+  isPublic      Boolean  @default(true) @map("is_public")  // false = internal/custom plans
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
   subscriptions Subscription[]
+  limits        PlanLimit?      // → workspace.prisma
+
+  @@map("plans")
 }
 
 model Subscription {
   id                 String             @id @default(uuid())
-  organizationId     String             @unique
-  planId             String
+  organizationId     String             @unique @map("organization_id")
+  planId             String             @map("plan_id")
   status             SubscriptionStatus @default(TRIALING)
-  trialEndsAt        DateTime?
-  currentPeriodStart DateTime
-  currentPeriodEnd   DateTime
-  seatCount          Int                @default(1)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  trialEndsAt        DateTime?          @map("trial_ends_at")
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  seatCount          Int                @default(1) @map("seat_count")
+  canceledAt         DateTime?          @map("canceled_at")
+  cancelReason       String?            @map("cancel_reason")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   plan         Plan            @relation(fields: [planId], references: [id])
-  payments     ManualPayment[]  // → manual-payments.prisma
+  payments     ManualPayment[]
+  usageRecords UsageRecord[]
 
   @@index([organizationId])
   @@index([status])
+  @@map("subscriptions")
 }
+
+// ─────────────────────────────────────────────────────────────
+// USAGE RECORD  — tracks per-org monthly consumption
+// Compared against PlanLimit to enforce soft/hard gates
+// ─────────────────────────────────────────────────────────────
+model UsageRecord {
+  id             String   @id @default(uuid())
+  subscriptionId String   @map("subscription_id")
+  organizationId String   @map("organization_id")
+  month          Int                               // 1-12
+  year           Int
+  invoiceCount   Int      @default(0) @map("invoice_count")
+  userCount      Int      @default(0) @map("user_count")
+  contactCount   Int      @default(0) @map("contact_count")
+  storageBytes   BigInt   @default(0) @map("storage_bytes")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, year, month])
+  @@index([organizationId, year, month])
+  @@map("usage_records")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum SubscriptionStatus {
   TRIALING

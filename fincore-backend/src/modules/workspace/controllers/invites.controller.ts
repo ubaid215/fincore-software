@@ -21,9 +21,9 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { OrgId } from '../../../common/decorators/organization.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { Public } from '../../../common/decorators/public.decorator';
-import { JwtPayload } from '../../../common/types/jwt-payload.type';
+import { OrgJwtPayload, JwtPayload } from '../../../common/types/jwt-payload.type';
 
-@ApiTags('workspace')
+@ApiTags('workspace / invites')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'invites', version: '1' })
@@ -33,28 +33,26 @@ export class InvitesController {
   @Post()
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Invite a new member to the organization — Admin or Owner' })
-  @ApiResponse({ status: 201, description: 'Invite created and email sent' })
-  @ApiResponse({ status: 402, description: 'Seat limit reached — upgrade plan' })
+  @ApiOperation({ summary: 'Invite a member — Admin or Owner' })
+  @ApiResponse({ status: 402, description: 'Seat limit reached' })
   @ApiResponse({ status: 409, description: 'Already a member or pending invite exists' })
-  create(@OrgId() orgId: string, @CurrentUser() user: JwtPayload, @Body() dto: InviteMemberDto) {
+  create(@OrgId() orgId: string, @CurrentUser() user: OrgJwtPayload, @Body() dto: InviteMemberDto) {
     return this.invitesService.createInvite(orgId, user.sub, dto);
   }
 
   @Post('accept')
-  @Public()
+  @Public() // token-based — no JWT needed
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Accept an invite token — joins the organization' })
-  @ApiResponse({ status: 400, description: 'Token expired' })
-  @ApiResponse({ status: 404, description: 'Token not found' })
-  @ApiResponse({ status: 409, description: 'Invite already accepted' })
+  @ApiOperation({ summary: 'Accept invite token — joins the organization' })
+  @ApiResponse({ status: 400, description: 'Token expired or revoked' })
+  @ApiResponse({ status: 409, description: 'Already accepted or already a member' })
   accept(@CurrentUser() user: JwtPayload, @Body() dto: AcceptInviteDto) {
     return this.invitesService.acceptInvite(dto.token, user.sub);
   }
 
   @Get()
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'List all pending invites for the organization' })
+  @ApiOperation({ summary: 'List pending invites' })
   listPending(@OrgId() orgId: string) {
     return this.invitesService.listPendingInvites(orgId);
   }
@@ -62,8 +60,8 @@ export class InvitesController {
   @Delete(':inviteId')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Revoke a pending invite — Admin or Owner' })
-  @ApiParam({ name: 'inviteId', description: 'Invite UUID' })
+  @ApiParam({ name: 'inviteId' })
+  @ApiOperation({ summary: 'Revoke a pending invite (soft-delete)' })
   revoke(@OrgId() orgId: string, @Param('inviteId', ParseUUIDPipe) inviteId: string) {
     return this.invitesService.revokeInvite(inviteId, orgId);
   }

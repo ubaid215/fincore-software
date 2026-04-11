@@ -19,6 +19,11 @@
  *     matches the @map("organization_id") annotation added to the Prisma
  *     schema — without that annotation the column name is ambiguous and
  *     Postgres returned error 42703.
+ *
+ *  3. recurringPeriod — DTO field is typed as string | undefined, but the
+ *     Prisma schema expects RecurringPeriod enum | null. Cast via
+ *     `as RecurringPeriod` to satisfy TS without changing runtime behaviour
+ *     (the DTO is validated by class-validator @IsEnum before reaching here).
  */
 
 import {
@@ -32,7 +37,7 @@ import { createHash } from 'node:crypto';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import type { Prisma } from '@prisma/client';
-import { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, RecurringPeriod } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { FxRateService } from './fx-rate.service';
 import {
@@ -97,9 +102,14 @@ export class InvoicesService {
           discountAmount: totals.discountAmount.toString(),
           totalAmount: totals.totalAmount.toString(),
           amountPaid: '0',
+          // amountDue = totalAmount on creation (nothing paid yet)
+          amountDue: totals.totalAmount.toString(),
           notes: dto.notes ?? null,
           isRecurring: dto.isRecurring ?? false,
-          recurringPeriod: dto.recurringPeriod ?? null,
+          // FIX: DTO field is `string | undefined`; Prisma expects
+          // `RecurringPeriod | null`. The DTO is @IsEnum-validated upstream
+          // so the cast is safe at runtime.
+          recurringPeriod: (dto.recurringPeriod as RecurringPeriod) ?? null,
           status: InvoiceStatus.DRAFT,
           lineItems: { create: computedLines },
         },
@@ -266,6 +276,7 @@ export class InvoicesService {
     }
 
     const newAmountPaid = roundMoney(alreadyPaid.plus(paymentAmount));
+    const newAmountDue = roundMoney(totalAmount.minus(newAmountPaid));
     const newStatus = this.computePaymentStatus(newAmountPaid, totalAmount);
 
     return this.prisma.$transaction(async (tx) => {
@@ -282,7 +293,11 @@ export class InvoicesService {
 
       const updated = await tx.invoice.update({
         where: { id: invoiceId },
-        data: { amountPaid: newAmountPaid.toString(), status: newStatus },
+        data: {
+          amountPaid: newAmountPaid.toString(),
+          amountDue: newAmountDue.toString(),
+          status: newStatus,
+        },
         include: this.defaultInclude(),
       });
 

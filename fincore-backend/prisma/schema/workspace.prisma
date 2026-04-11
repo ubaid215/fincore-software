@@ -1,77 +1,281 @@
+// ============================================================
 // prisma/schema/workspace.prisma
-// Domain: Workspace & Multi-tenancy
+// Domain : Workspace & Multi-tenancy
+// Covers : Organization · Tenant config · App access
+//          Per-org feature flags · Custom fields · Owner seed
+//          User ↔ Org membership · White-label config
+// ============================================================
 
+// ─────────────────────────────────────────────────────────────
+// ORGANIZATION  — the tenant root
+// Every row in every other domain carries organizationId.
+// Prisma middleware enforces it on every query automatically.
+// ─────────────────────────────────────────────────────────────
 model Organization {
-  id            String    @id @default(uuid())
-  name          String
-  slug          String    @unique
-  email         String
-  timezone      String    @default("UTC")
-  currency      String    @default("PKR")
-  fiscalYearEnd Int       @default(12)  @map("fiscal_year_end")
-  status        OrgStatus @default(ACTIVE)
-  // FIX: Added config Json field — onboarding.service.ts reads/writes onboardingCompleted here
-  config        Json?
-  createdAt     DateTime  @default(now())  @map("created_at")
-  updatedAt     DateTime  @updatedAt  @map("updated_at")
+  id               String    @id @default(uuid())
+  name             String
+  slug             String    @unique                 // URL-safe: "acme-corp"
+  email            String?
+  phone            String?
+  logoUrl          String?   @map("logo_url")
+  website          String?
 
-  // Auth domain
-  members  UserOrganization[]
-  invites  Invite[]
+  // ── Locale & finance defaults ─────────────────────────────
+  timezone         String    @default("UTC")
+  currency         String    @default("PKR")
+  country          String    @default("PK")
+  language         String    @default("en")
+  fiscalYearEnd    Int       @default(12) @map("fiscal_year_end")  // month number 1-12
+  fiscalYearStart  Int       @default(1)  @map("fiscal_year_start")
 
-  // Accounting domain
-  accounts       Account[]
-  journalEntries JournalEntry[]
-  fiscalPeriods  FiscalPeriod[]
+  // ── Registration / compliance ────────────────────────────
+  taxId            String?   @map("tax_id")          // NTN (PK), GST, VAT, EIN…
+  businessType     BusinessType @default(SME)
+  industry         String?
 
-  // Transaction domain
-  invoices       Invoice[]
-  expenses       Expense[]
-  bankStatements BankStatement[]
+  // ── Status ───────────────────────────────────────────────
+  status           OrgStatus @default(ACTIVE)
 
-  // Billing domain
-  subscription   Subscription?
+  // ── Onboarding ───────────────────────────────────────────
+  onboardingStep   Int       @default(0) @map("onboarding_step")   // 0=reg, 1=org, 2=done
+  onboardingData   Json?     @map("onboarding_data")               // wizard progress blob
 
-  // Manual payments
-  manualPayments ManualPayment[]
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")                    // soft-delete
 
-  // Inventory domain
-  products       Product[]
-  stockMovements StockMovement[]
-  purchaseOrders PurchaseOrder[]
-  saleOrders     SaleOrder[]
-  stockSnapshots StockSnapshot[]
+  // ── Auth domain ──────────────────────────────────────────
+  members          UserOrganization[]
+  invites          Invite[]
+  apiKeys          ApiKey[]
 
-  // Payroll domain
-  employees      Employee[]
-  salaryRecords  SalaryRecord[]
+  // ── Workspace domain ──────────────────────────────────────
+  appAccess        OrgAppAccess[]        // which apps this org can use
+  customFields     CustomFieldDef[]      // owner-defined extra fields per model
+  whiteLabelConfig WhiteLabelConfig?     // branding for client portal
 
-  // Cost centers
-  costCenters    CostCenter[]
+  // ── Accounting domain ────────────────────────────────────
+  accounts         Account[]
+  journalEntries   JournalEntry[]
+  fiscalPeriods    FiscalPeriod[]
 
-  // Contacts
-  contacts       Contact[]
+  // ── Transaction domain ───────────────────────────────────
+  invoices         Invoice[]
+  expenses         Expense[]
+  bankStatements   BankStatement[]
+  manualPayments   ManualPayment[]
 
-  // Cross-cutting
-  auditLogs      AuditLog[]
+  // ── Billing domain ───────────────────────────────────────
+  subscription     Subscription?
+
+  // ── Inventory domain ─────────────────────────────────────
+  products         Product[]
+  stockMovements   StockMovement[]
+  purchaseOrders   PurchaseOrder[]
+  saleOrders       SaleOrder[]
+  stockSnapshots   StockSnapshot[]
+
+  // ── Payroll domain ───────────────────────────────────────
+  employees        Employee[]
+  salaryRecords    SalaryRecord[]
+
+  // ── Contact domain ───────────────────────────────────────
+  contacts         Contact[]
+  costCenters      CostCenter[]
+
+  // ── Calendar / Appointments / Documents / Sign ───────────
+  calendarEvents   CalendarEvent[]
+  appointments     Appointment[]
+  documents        Document[]
+
+  // ── Audit domain ─────────────────────────────────────────
+  auditLogs        AuditLog[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("organizations")
 }
 
+// ─────────────────────────────────────────────────────────────
+// USER ORGANIZATION  — M:N membership + role + app access
+// ─────────────────────────────────────────────────────────────
 model UserOrganization {
-  id             String   @id @default(uuid())
-  userId         String  @map("user_id")
-  organizationId String  @map("organization_id")
-  role           UserRole @default(VIEWER)
-  createdAt      DateTime @default(now())  @map("created_at")
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  organizationId String    @map("organization_id")
+  role           UserRole  @default(VIEWER)
+  isDefault      Boolean   @default(false) @map("is_default")  // which org loads on login
+  appAccess      AppKey[]                                        // subset of org-enabled apps
+  joinedAt       DateTime  @default(now()) @map("joined_at")
+  removedAt      DateTime? @map("removed_at")                   // soft-remove keeps audit
 
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([userId, organizationId])
   @@index([organizationId])
+  @@index([userId])
+  @@map("user_organizations")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ORG APP ACCESS  — controls which apps a tenant has enabled
+// Owner/Admin toggles these. Free plan = 1 app of choice.
+// ─────────────────────────────────────────────────────────────
+model OrgAppAccess {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  app            AppKey
+  isEnabled      Boolean   @default(true) @map("is_enabled")
+  enabledAt      DateTime  @default(now()) @map("enabled_at")
+  enabledById    String?   @map("enabled_by_id")            // userId who toggled
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, app])
+  @@index([organizationId])
+  @@map("org_app_access")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CUSTOM FIELD DEFINITION  — Owner can define extra fields
+// on any supported model (Invoice, Contact, Expense, etc.)
+// Values stored in CustomFieldValue rows.
+// ─────────────────────────────────────────────────────────────
+model CustomFieldDef {
+  id             String          @id @default(uuid())
+  organizationId String          @map("organization_id")
+  targetModel    String          @map("target_model")   // "Invoice" | "Contact" | "Expense"…
+  fieldKey       String          @map("field_key")      // machine key: "po_reference"
+  label          String                                  // display label: "PO Reference"
+  fieldType      CustomFieldType @map("field_type")
+  isRequired     Boolean         @default(false) @map("is_required")
+  defaultValue   String?         @map("default_value")
+  options        Json?                                   // for SELECT type: ["Option A","Option B"]
+  sortOrder      Int             @default(0) @map("sort_order")
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  values       CustomFieldValue[]
+
+  @@unique([organizationId, targetModel, fieldKey])
+  @@index([organizationId, targetModel])
+  @@map("custom_field_defs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CUSTOM FIELD VALUE  — actual data stored per record
+// resourceId = the PK of whatever model row this belongs to
+// ─────────────────────────────────────────────────────────────
+model CustomFieldValue {
+  id            String   @id @default(uuid())
+  fieldDefId    String   @map("field_def_id")
+  resourceId    String   @map("resource_id")    // FK to e.g. Invoice.id
+  value         String?                          // all values stored as text; cast in app
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  fieldDef CustomFieldDef @relation(fields: [fieldDefId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldDefId, resourceId])
+  @@index([fieldDefId])
+  @@index([resourceId])
+  @@map("custom_field_values")
+}
+
+// ─────────────────────────────────────────────────────────────
+// WHITE-LABEL CONFIG  — Owner customizes client portal branding
+// Logo, colors, domain, email sender name, etc.
+// ─────────────────────────────────────────────────────────────
+model WhiteLabelConfig {
+  id              String   @id @default(uuid())
+  organizationId  String   @unique @map("organization_id")
+  brandName       String?  @map("brand_name")       // replaces "FinanceApp" in UI
+  primaryColor    String?  @map("primary_color")    // hex: "#1a56db"
+  accentColor     String?  @map("accent_color")
+  logoUrl         String?  @map("logo_url")
+  faviconUrl      String?  @map("favicon_url")
+  customDomain    String?  @unique @map("custom_domain")  // "portal.acme.com"
+  supportEmail    String?  @map("support_email")
+  emailFromName   String?  @map("email_from_name")
+  footerText      String?  @map("footer_text")
+  clientPortalEnabled Boolean @default(false) @map("client_portal_enabled")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("white_label_configs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PLAN LIMITS  — per-plan usage caps (stored in DB so
+// Owner can adjust without code deploy)
+// ─────────────────────────────────────────────────────────────
+model PlanLimit {
+  id             String   @id @default(uuid())
+  planId         String   @unique @map("plan_id")
+  maxUsers       Int      @default(1) @map("max_users")
+  maxOrgs        Int      @default(1) @map("max_orgs")
+  maxInvoices    Int      @default(50) @map("max_invoices")  // per month; -1 = unlimited
+  maxContacts    Int      @default(100) @map("max_contacts")
+  maxStorage     Int      @default(500) @map("max_storage")  // MB; -1 = unlimited
+  maxApps        Int      @default(1) @map("max_apps")       // free = 1; pro = all
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@map("plan_limits")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum OrgStatus {
   ACTIVE
   SUSPENDED
   CANCELED
+}
+
+enum BusinessType {
+  SME
+  FREELANCER
+  STARTUP
+  CORPORATION
+  NON_PROFIT
+  ENTERPRISE
+}
+
+enum CustomFieldType {
+  TEXT
+  NUMBER
+  DATE
+  BOOLEAN
+  SELECT
+  MULTI_SELECT
+  URL
+  EMAIL
+  PHONE
+}
+
+// AppKey — every value is one "app" in the platform.
+// Free plan users pick exactly ONE app.
+// Plan limits enforced by PlanLimit.maxApps.
+enum AppKey {
+  INVOICING
+  EXPENSES
+  PAYROLL
+  INVENTORY
+  ACCOUNTING       // Chart of accounts + GL
+  BANK_RECON
+  CONTACTS
+  CALENDAR
+  APPOINTMENTS
+  DOCUMENTS
+  SIGN             // e-signature
+  REPORTS
 }

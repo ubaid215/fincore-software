@@ -1,21 +1,27 @@
+// ============================================================
 // prisma/schema/manual-payments.prisma
-// Domain: Manual Payment Collection
+// Domain : Manual Payment Collection (SaaS billing)
+// Covers : Bank transfer / EasyPaisa proof-of-payment flow
+// ============================================================
 
 model ManualPayment {
-  id                 String              @id @default(uuid())
-  organizationId     String  @map("organization_id")
-  subscriptionId     String  @map("subscription_id")
-  referenceCode      String              @unique  @map("reference_code")
-  proformaS3Key      String?  @map("proforma_s3_key")
-  amount             Decimal             @db.Decimal(10, 2)
-  currency           String              @default("PKR")
-  status             ManualPaymentStatus @default(PENDING)
-  confirmedByAdminId String?  @map("confirmed_by_admin_id")
-  confirmedAt        DateTime?  @map("confirmed_at")
-  rejectionNote      String?  @map("rejection_note")
-  expiresAt          DateTime?  @map("expires_at")
-  createdAt          DateTime            @default(now())  @map("created_at")
-  updatedAt          DateTime            @updatedAt  @map("updated_at")
+  id                  String              @id @default(uuid())
+  organizationId      String              @map("organization_id")
+  subscriptionId      String              @map("subscription_id")
+  referenceCode       String              @unique @map("reference_code")
+  proformaS3Key       String?             @map("proforma_s3_key")
+  amount              Decimal             @db.Decimal(19, 4)
+  currency            String              @default("PKR")
+  status              ManualPaymentStatus @default(PENDING)
+  confirmedByAdminId  String?             @map("confirmed_by_admin_id")
+  confirmedAt         DateTime?           @map("confirmed_at")
+  rejectionNote       String?             @map("rejection_note")
+  expiresAt           DateTime?           @map("expires_at")
+  submittedProofS3Key String?             @map("submitted_proof_s3_key")
+  submittedAt         DateTime?           @map("submitted_at")
+  notes               String?
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
 
   organization     Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   subscription     Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
@@ -25,10 +31,17 @@ model ManualPayment {
   @@index([referenceCode])
   @@index([subscriptionId])
   @@index([organizationId])
+  @@index([expiresAt, status])
+  @@map("manual_payments")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum ManualPaymentStatus {
   PENDING
+  SUBMITTED    // customer uploaded proof — awaiting admin review
   CONFIRMED
   REJECTED
   EXPIRED

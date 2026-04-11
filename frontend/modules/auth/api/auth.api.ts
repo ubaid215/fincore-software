@@ -1,4 +1,10 @@
-import { apiClient } from '@/shared/lib/api-client'
+// modules/auth/api/auth.api.ts
+//
+// The api-client interceptor now unwraps the NestJS envelope automatically:
+//   { data: T, timestamp, statusCode }  →  T
+// So every call here receives plain T directly — no manual unwrap() needed.
+
+import { apiClient }   from '@/shared/lib/api-client'
 import type {
   LoginRequest,
   SignupRequest,
@@ -8,61 +14,85 @@ import type {
 } from '../types/auth.types'
 import type { AuthUser, OrganizationMembership } from '@/shared/types'
 
-// Backend wraps responses in { data: T, timestamp: string }
-interface BackendResponse<T> {
-  data: T
-  timestamp: string
+// ── Response shapes ────────────────────────────────────────────────────────────
+
+export interface TokenPair {
+  accessToken:  string
+  refreshToken: string
 }
 
-// Extract the actual data from backend wrapper
-function unwrap<T>(response: BackendResponse<T> | T): T {
-  // Check if response has a 'data' property (backend wrapper)
-  if (response && typeof response === 'object' && 'data' in response && response.data) {
-    return response.data as T
+// GET /auth/organizations returns an array of these (after envelope unwrap)
+// Matches OrganizationMembershipResponse in auth.service.ts
+interface BackendOrgMembership {
+  role:      string
+  isDefault: boolean
+  organization: {
+    id:   string
+    name: string
+    slug: string
   }
-  return response as T
 }
+
+export interface AcceptInviteResponse {
+  user:        AuthUser
+  tokens:      TokenPair
+  memberships: OrganizationMembership[]
+}
+
+// ── Adapter ────────────────────────────────────────────────────────────────────
+// Backend: { role, isDefault, organization: { id, name, slug } }
+// Frontend: { organizationId, organizationName, organizationSlug, role, isDefault }
+
+function adaptMembership(m: BackendOrgMembership): OrganizationMembership {
+  return {
+    organizationId:   m.organization.id,
+    organizationName: m.organization.name,
+    organizationSlug: m.organization.slug,
+    role:             m.role,
+    isDefault:        m.isDefault,
+  }
+}
+
+// ── API surface ────────────────────────────────────────────────────────────────
 
 export const authApi = {
-  login: async (data: LoginRequest) => {
-    const result = await apiClient.post<BackendResponse<{ accessToken: string; refreshToken: string }>>('/auth/login', data)
-    return unwrap(result)
+  login: async (data: LoginRequest): Promise<TokenPair> => {
+    return apiClient.post<TokenPair>('/auth/login', data)
   },
 
-  signup: async (data: SignupRequest) => {
-    const result = await apiClient.post<BackendResponse<{ accessToken: string; refreshToken: string }>>('/auth/register', data)
-    return unwrap(result)
+  signup: async (data: SignupRequest): Promise<TokenPair> => {
+    return apiClient.post<TokenPair>('/auth/register', data)
   },
 
-  logout: async () => {
+  logout: async (): Promise<void> => {
     await apiClient.post('/auth/logout', {})
   },
 
-  refresh: async () => {
-    const result = await apiClient.post<BackendResponse<{ accessToken: string }>>('/auth/refresh', {})
-    return unwrap(result)
+  refresh: async (): Promise<{ accessToken: string }> => {
+    return apiClient.post('/auth/refresh', {})
   },
 
-  getMe: async () => {
-    const result = await apiClient.get<BackendResponse<AuthUser>>('/auth/me')
-    return unwrap(result)
+  getMe: async (): Promise<AuthUser> => {
+    return apiClient.get<AuthUser>('/auth/me')
   },
 
-  getMyOrganizations: async () => {
-    const result = await apiClient.get<BackendResponse<OrganizationMembership[]>>('/auth/organizations')
-    return unwrap(result)
+  getMyOrganizations: async (): Promise<OrganizationMembership[]> => {
+    const result = await apiClient.get<BackendOrgMembership[]>('/auth/organizations')
+    // result is already unwrapped to BackendOrgMembership[] by the interceptor
+    return Array.isArray(result) ? result.map(adaptMembership) : []
   },
 
-  acceptInvite: async (data: InviteAcceptRequest) => {
-    const result = await apiClient.post<BackendResponse<{ accessToken: string; refreshToken: string }>>('/auth/invite/accept', data)
-    return unwrap(result)
+  acceptInvite: async (data: InviteAcceptRequest): Promise<AcceptInviteResponse> => {
+    return apiClient.post<AcceptInviteResponse>('/auth/invite/accept', data)
   },
 
-  forgotPassword: async (data: ForgotPasswordRequest) => {
+  forgotPassword: async (data: ForgotPasswordRequest): Promise<void> => {
     await apiClient.post('/auth/forgot-password', data)
   },
 
-  resetPassword: async (data: ResetPasswordRequest) => {
+  resetPassword: async (data: ResetPasswordRequest): Promise<void> => {
     await apiClient.post('/auth/reset-password', data)
   },
 }
+
+// Sprint note: S5-auth-api — no unwrap needed, interceptor handles envelope

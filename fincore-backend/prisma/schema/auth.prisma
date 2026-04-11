@@ -1,64 +1,237 @@
+// ============================================================
 // prisma/schema/auth.prisma
-// Domain: Authentication & Identity
-// Owner:  Auth team
-// Models: User, RefreshToken, Invite
+// Domain : Authentication & Identity
+// Covers : Email+Password · Google OAuth · Magic Link OTP
+//          TOTP (2FA) · API Keys · Session management
+//          Rate-limit lockout · Email verification
+// ============================================================
 
+// ─────────────────────────────────────────────────────────────
+// USER  — core identity record, tenant-agnostic
+// The same user can be a member of multiple organizations.
+// Tenant membership + role live in UserOrganization.
+// ─────────────────────────────────────────────────────────────
 model User {
-  id           String   @id @default(uuid())
-  email        String   @unique
-  passwordHash String  @map("password_hash")
-  firstName    String  @map("first_name")
-  lastName     String  @map("last_name")
-  mfaEnabled   Boolean  @default(false)  @map("mfa_enabled")
-  mfaSecret    String?  @map("mfa_secret")
-  createdAt    DateTime @default(now())  @map("created_at")
-  updatedAt    DateTime @updatedAt  @map("updated_at")
+  id                  String      @id @default(uuid())
+  email               String      @unique
+  passwordHash        String?     @map("password_hash")        // nullable → Google-only users have no password
+  firstName           String      @map("first_name")
+  lastName            String      @map("last_name")
+  phone               String?                                   // optional; used for SMS-based 2FA in future
+  avatarUrl           String?     @map("avatar_url")
 
-  organizations   UserOrganization[]     // → workspace.prisma
-  refreshTokens   RefreshToken[]
-  invitesSent     Invite[]               @relation("InviteSender")
-  expensesClaimed Expense[]              @relation("ExpenseClaimer")  // → expenses.prisma
-  expensesApproved Expense[]             @relation("ExpenseApprover") // → expenses.prisma
-  paymentsConfirmed ManualPayment[]      @relation("PaymentConfirmer") // → manual-payments.prisma
+  // ── Account status ───────────────────────────────────────
+  status              UserStatus  @default(UNVERIFIED)
+  emailVerifiedAt     DateTime?   @map("email_verified_at")
+
+  // ── Google OAuth ─────────────────────────────────────────
+  googleId            String?     @unique @map("google_id")    // sub from Google JWT
+  googleAccessToken   String?     @map("google_access_token")  // store encrypted at rest
+  googleRefreshToken  String?     @map("google_refresh_token")
+
+  // ── TOTP / 2FA ───────────────────────────────────────────
+  mfaEnabled          Boolean     @default(false) @map("mfa_enabled")
+  mfaSecret           String?     @map("mfa_secret")           // TOTP shared secret (encrypted)
+  mfaBackupCodes      String[]    @map("mfa_backup_codes")     // hashed backup codes
+
+  // ── Rate-limit & lockout ─────────────────────────────────
+  failedLoginAttempts Int         @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?   @map("locked_until")
+  lastLoginAt         DateTime?   @map("last_login_at")
+  lastLoginIp         String?     @map("last_login_ip")
+
+  // ── Soft-delete / deactivation ───────────────────────────
+  isActive            Boolean     @default(true) @map("is_active")
+  deletedAt           DateTime?   @map("deleted_at")           // soft-delete; keeps audit trail intact
+
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  // ── Relations — Auth domain ──────────────────────────────
+  refreshTokens       RefreshToken[]
+  magicLinks          MagicLink[]
+  apiKeys             ApiKey[]
+  oauthAccounts       OAuthAccount[]                           // future: multi-provider
+
+  // ── Relations — Workspace domain ─────────────────────────
+  organizations       UserOrganization[]
+  invitesSent         Invite[]            @relation("InviteSender")
+
+  // ── Relations — Expense domain ───────────────────────────
+  expensesClaimed     Expense[]           @relation("ExpenseClaimer")
+  expensesApproved    Expense[]           @relation("ExpenseApprover")
+
+  // ── Relations — Payment domain ───────────────────────────
+  paymentsConfirmed   ManualPayment[]     @relation("PaymentConfirmer")
+
+  // ── Relations — Inventory domain ─────────────────────────
+  stockMovementsCreated  StockMovement[]  @relation("StockMovementCreator")
+  purchaseOrdersApproved PurchaseOrder[]  @relation("POApprover")
+  purchaseOrdersReceived PurchaseOrder[]  @relation("POReceiver")
+  saleOrdersApproved     SaleOrder[]      @relation("SOApprover")
+  saleOrdersShipped      SaleOrder[]      @relation("SOShipper")
+
+  // ── Relations — Contact domain ───────────────────────────
+  contactsCreated     Contact[]           @relation("ContactCreator")
+
+  // ── Relations — Audit domain ─────────────────────────────
+  auditLogs           AuditLog[]          @relation("UserAuditLogs")
+
+  // ── Relations — Calendar / Appointments ──────────────────
+  calendarEvents      CalendarEvent[]     @relation("EventOrganizer")
+  eventAttendees      EventAttendee[]
+  appointments        Appointment[]       @relation("AppointmentOwner")
+
+  // ── Relations — Documents ────────────────────────────────
+  documentsCreated    Document[]          @relation("DocumentCreator")
+  documentsSigned     DocumentSignature[]
+
+  @@index([email])
+  @@index([googleId])
+  @@index([status])
+  @@map("users")
 }
 
+// ─────────────────────────────────────────────────────────────
+// REFRESH TOKEN  — HttpOnly cookie; one row per active session
+// Hash the raw token before storing. Rotate on every refresh.
+// ─────────────────────────────────────────────────────────────
 model RefreshToken {
-  id        String   @id @default(uuid())
-  userId    String  @map("user_id")
-  token     String   @unique
-  expiresAt DateTime  @map("expires_at")
-  createdAt DateTime @default(now())  @map("created_at")
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  tokenHash   String    @unique @map("token_hash")  // SHA-256 of the raw token
+  deviceLabel String?   @map("device_label")        // "Chrome on Windows", "iOS App"
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")          // null = active; set = revoked
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([token])
+  @@index([tokenHash])
+  @@index([expiresAt])                               // cron cleanup
+  @@map("refresh_tokens")
 }
 
-model Invite {
-  id             String    @id @default(uuid())
-  organizationId String  @map("organization_id")
-  invitedById    String?  @map("invited_by_id")
-  email          String
-  role           UserRole
-  token          String    @unique
-  expiresAt      DateTime  @map("expires_at")
-  acceptedAt     DateTime?  @map("accepted_at")
-  createdAt      DateTime  @default(now())  @map("created_at")
+// ─────────────────────────────────────────────────────────────
+// MAGIC LINK  — Passwordless OTP / password-reset link
+// One token per email per purpose. Invalidated after first use.
+// ─────────────────────────────────────────────────────────────
+model MagicLink {
+  id          String          @id @default(uuid())
+  userId      String          @map("user_id")
+  tokenHash   String          @unique @map("token_hash") // SHA-256 of the raw URL token
+  purpose     MagicLinkPurpose
+  expiresAt   DateTime        @map("expires_at")         // 15 min for login; 1 hr for reset
+  usedAt      DateTime?       @map("used_at")            // null = not yet used
+  ipAddress   String?         @map("ip_address")
+  createdAt   DateTime        @default(now()) @map("created_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id])  // → workspace.prisma
-  invitedBy    User?        @relation("InviteSender", fields: [invitedById], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("magic_links")
+}
+
+// ─────────────────────────────────────────────────────────────
+// OAUTH ACCOUNT  — Multi-provider social login
+// Allows one user to link Google, GitHub, etc. in the future.
+// ─────────────────────────────────────────────────────────────
+model OAuthAccount {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  provider       String                          // "google" | "github" | "microsoft"
+  providerUserId String   @map("provider_user_id") // sub / id from the provider
+  accessToken    String?  @map("access_token")   // encrypted
+  refreshToken   String?  @map("refresh_token")  // encrypted
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// API KEY  — Programmatic access; scoped & revocable
+// Store only the hash. Show the raw key ONCE on creation.
+// ─────────────────────────────────────────────────────────────
+model ApiKey {
+  id             String      @id @default(uuid())
+  organizationId String      @map("organization_id")
+  userId         String      @map("user_id")           // who created it
+  name           String                                 // "Zapier Integration", "Webhook Reader"
+  keyHash        String      @unique @map("key_hash")  // SHA-256 of raw key
+  keyPrefix      String      @map("key_prefix")        // first 8 chars for UI display: "sk_live_ab12..."
+  scopes         String[]                               // ["invoices:read", "expenses:write"]
+  expiresAt      DateTime?   @map("expires_at")        // null = never expires
+  lastUsedAt     DateTime?   @map("last_used_at")
+  revokedAt      DateTime?   @map("revoked_at")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
 
   @@index([organizationId])
-  @@index([token])
+  @@index([keyHash])
+  @@map("api_keys")
 }
 
-// ── Shared enums (referenced across multiple domain files) ────────────────────
+// ─────────────────────────────────────────────────────────────
+// INVITE  — Email invitation to join an organization
+// One pending invite per email per org enforced via @@unique.
+// ─────────────────────────────────────────────────────────────
+model Invite {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  invitedById    String?   @map("invited_by_id")
+  email          String
+  role           UserRole
+  appAccess      AppKey[]                        // which apps this user is invited to access
+  token          String    @unique
+  expiresAt      DateTime  @map("expires_at")
+  acceptedAt     DateTime? @map("accepted_at")
+  revokedAt      DateTime? @map("revoked_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invitedBy    User?        @relation("InviteSender", fields: [invitedById], references: [id])
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@index([token])
+  @@map("invites")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  UNVERIFIED    // registered but email not confirmed
+  ACTIVE        // verified and usable
+  SUSPENDED     // admin-suspended
+  DELETED       // soft-deleted
+}
 
 enum UserRole {
-  OWNER
-  ADMIN
-  ACCOUNTANT
-  MANAGER
-  VIEWER
+  OWNER         // god-mode; created with seed script; cannot be removed
+  ADMIN         // full ops; requires 2FA
+  ACCOUNTANT    // finance ops; no billing
+  MANAGER       // department-level approvals
+  VIEWER        // read-only
+  CLIENT        // external portal access only
+}
+
+enum MagicLinkPurpose {
+  EMAIL_VERIFICATION  // verify email on signup
+  PASSWORD_RESET      // forgot password flow
+  MAGIC_LOGIN         // passwordless login
 }

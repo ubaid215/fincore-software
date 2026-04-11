@@ -1,90 +1,136 @@
+// ============================================================
 // prisma/schema/invoicing.prisma
-// Domain: Invoicing & Billing
-// Owner:  Invoicing team
+// Domain : Invoicing & Billing
+// Covers : Invoice · Line Items · Payments · Recurring
+//          Linked to Contact (customer) for quick lookup
+// ============================================================
 
 model Invoice {
   id              String        @id @default(uuid())
-  organizationId  String  @map("organization_id")
-  invoiceNumber   String  @map("invoice_number")
-  clientName      String  @map("client_name")
-  clientEmail     String?  @map("client_email")
-  clientAddress   String?  @map("client_address")
-  customerId      String?  @map("customer_id")
+  organizationId  String        @map("organization_id")
+
+  // ── Number & reference ───────────────────────────────────
+  invoiceNumber   String        @map("invoice_number")
+  purchaseOrder   String?       @map("purchase_order")   // client's PO reference
+  reference       String?                                  // internal reference
+
+  // ── Customer  — prefer Contact FK; fallback to free text ─
+  customerId      String?       @map("customer_id")       // → Contact.id
+  clientName      String        @map("client_name")       // snapshot at time of issue
+  clientEmail     String?       @map("client_email")
+  clientAddress   String?       @map("client_address")
+  clientTaxId     String?       @map("client_tax_id")
+
+  // ── Dates & status ───────────────────────────────────────
   status          InvoiceStatus @default(DRAFT)
-  issueDate       DateTime  @map("issue_date")
-  dueDate         DateTime?  @map("due_date")
+  issueDate       DateTime      @map("issue_date")
+  dueDate         DateTime?     @map("due_date")
+  sentAt          DateTime?     @map("sent_at")
+  paidAt          DateTime?     @map("paid_at")
+  voidedAt        DateTime?     @map("voided_at")
+
+  // ── Amounts  — all Decimal(19,4) for consistency ─────────
   currency        String        @default("PKR")
+  exchangeRate    Decimal       @default(1) @db.Decimal(19, 6) @map("exchange_rate")
   subtotal        Decimal       @db.Decimal(19, 4)
-  taxAmount       Decimal       @default(0) @db.Decimal(19, 4)  @map("tax_amount")
-  discountAmount  Decimal       @default(0) @db.Decimal(19, 4)  @map("discount_amount")
-  totalAmount     Decimal       @db.Decimal(19, 4)  @map("total_amount")
-  amountPaid      Decimal       @default(0) @db.Decimal(19, 4)  @map("amount_paid")
+  taxAmount       Decimal       @default(0) @db.Decimal(19, 4) @map("tax_amount")
+  discountAmount  Decimal       @default(0) @db.Decimal(19, 4) @map("discount_amount")
+  totalAmount     Decimal       @db.Decimal(19, 4) @map("total_amount")
+  amountPaid      Decimal       @default(0) @db.Decimal(19, 4) @map("amount_paid")
+  amountDue       Decimal       @db.Decimal(19, 4) @map("amount_due")  // computed: totalAmount - amountPaid
+
+  // ── Presentation ─────────────────────────────────────────
   notes           String?
-  pdfUrl          String?  @map("pdf_url")
-  isRecurring     Boolean       @default(false)  @map("is_recurring")
-  recurringPeriod String?  @map("recurring_period")
-  createdAt       DateTime      @default(now())  @map("created_at")
-  updatedAt       DateTime      @updatedAt  @map("updated_at")
+  terms           String?                                  // payment terms text
+  pdfUrl          String?       @map("pdf_url")
+  pdfS3Key        String?       @map("pdf_s3_key")
 
-  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer     Contact?          @relation("CustomerInvoices", fields: [customerId], references: [id])
-  lineItems    InvoiceLineItem[]
-  payments     InvoicePayment[]
+  // ── Recurring ────────────────────────────────────────────
+  isRecurring      Boolean       @default(false) @map("is_recurring")
+  recurringPeriod  RecurringPeriod? @map("recurring_period")
+  recurringEndDate DateTime?     @map("recurring_end_date")
+  parentInvoiceId  String?       @map("parent_invoice_id")  // if generated from recurring
 
-  @@map("invoices")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer        Contact?          @relation("CustomerInvoices", fields: [customerId], references: [id])
+  parentInvoice   Invoice?          @relation("RecurringInvoices", fields: [parentInvoiceId], references: [id])
+  childInvoices   Invoice[]         @relation("RecurringInvoices")
+  lineItems       InvoiceLineItem[]
+  payments        InvoicePayment[]
+  saleOrders      SaleOrder[]       @relation("SaleOrderInvoice")
+
   @@unique([organizationId, invoiceNumber])
   @@index([organizationId, status])
   @@index([organizationId, dueDate])
+  @@index([organizationId, isRecurring])
   @@index([customerId])
+  @@index([organizationId, deletedAt])
+  @@map("invoices")
 }
 
-// FIX: productId and product relation were already present in the schema file you sent.
-// They are confirmed correct here. If you were getting "product does not exist on
-// InvoiceLineItemInclude" errors, it means `prisma generate` had NOT been run after
-// this relation was added. Running `npx prisma generate` will resolve those errors.
 model InvoiceLineItem {
   id          String   @id @default(uuid())
-  invoiceId   String  @map("invoice_id")
+  invoiceId   String   @map("invoice_id")
+  productId   String?  @map("product_id")
   description String
   quantity    Decimal  @db.Decimal(10, 4)
-  unitPrice   Decimal  @db.Decimal(19, 4)  @map("unit_price")
+  unitPrice   Decimal  @db.Decimal(19, 4) @map("unit_price")
   taxCode     String?  @map("tax_code")
-  taxRate     Decimal  @default(0) @db.Decimal(5, 4)  @map("tax_rate")
-  discount    Decimal  @default(0) @db.Decimal(5, 4)
+  // Stored as decimal fraction: 0.1800 = 18%
+  taxRate     Decimal  @default(0) @db.Decimal(7, 4) @map("tax_rate")
+  discount    Decimal  @default(0) @db.Decimal(7, 4)
   total       Decimal  @db.Decimal(19, 4)
-  productId   String?  @map("product_id")
+  sortOrder   Int      @default(0) @map("sort_order")
 
-  invoice Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  // FIX: This relation must exist for `include: { product: true }` to work in services.
-  // If this was previously missing, add it and run `npx prisma generate && npx prisma migrate dev`.
-  product Product?  @relation(fields: [productId], references: [id])
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
 
-  @@map("invoice_line_items")
   @@index([invoiceId])
   @@index([productId])
+  @@map("invoice_line_items")
 }
 
 model InvoicePayment {
-  id        String   @id @default(uuid())
-  invoiceId String  @map("invoice_id")
-  amount    Decimal  @db.Decimal(19, 4)
-  currency  String
-  method    String
-  reference String?
-  paidAt    DateTime  @map("paid_at")
-  createdAt DateTime @default(now())  @map("created_at")
+  id           String   @id @default(uuid())
+  invoiceId    String   @map("invoice_id")
+  amount       Decimal  @db.Decimal(19, 4)
+  currency     String
+  exchangeRate Decimal  @default(1) @db.Decimal(19, 6) @map("exchange_rate")
+  method       String                            // "bank_transfer" | "cash" | "stripe"
+  reference    String?
+  notes        String?
+  paidAt       DateTime @map("paid_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
-  @@map("invoice_payments")
   @@index([invoiceId])
+  @@map("invoice_payments")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum InvoiceStatus {
   DRAFT
   SENT
+  VIEWED           // client opened the portal link
   PARTIALLY_PAID
   PAID
+  OVERDUE
   VOID
   DISPUTED
+}
+
+enum RecurringPeriod {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
 }

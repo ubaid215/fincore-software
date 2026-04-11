@@ -10,15 +10,12 @@ export class LoggingInterceptor implements NestInterceptor {
 
   intercept(ctx: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = ctx.switchToHttp().getRequest<Request>();
-    const method = req.method;
-    const url = req.url;
     const orgId = req.headers['x-organization-id'] ?? '-';
     const start = Date.now();
 
     return next.handle().pipe(
       tap(() => {
-        const ms = Date.now() - start;
-        this.logger.log(`${method} ${url} [org:${orgId}] +${ms}ms`);
+        this.logger.log(`${req.method} ${req.url} [org:${orgId}] +${Date.now() - start}ms`);
       }),
     );
   }

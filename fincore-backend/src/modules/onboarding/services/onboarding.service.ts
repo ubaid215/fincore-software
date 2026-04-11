@@ -1,5 +1,5 @@
 // src/modules/onboarding/services/onboarding.service.ts
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../database/prisma.service';
 import { AccountsService } from '../../chart-of-accounts/services/accounts.service';
@@ -29,10 +29,12 @@ export class OnboardingService {
       where: { id: organizationId },
     });
 
-    // FIX: organization.config is now a Json? field (added to workspace.prisma).
-    // Cast to Record<string, any> for safe property access.
-    const orgConfig = organization?.config as Record<string, any> | null;
-    if (orgConfig?.onboardingCompleted) {
+    // FIX: The TS error revealed the actual field name from the generated type:
+    //   '{ ... onboardingData: JsonValue; }'
+    // The field is `onboardingData`, not `config`. Renamed throughout.
+    // Cast to Record<string, any> for safe property access on JsonValue.
+    const onboardingData = organization?.onboardingData as Record<string, any> | null;
+    if (onboardingData?.onboardingCompleted) {
       return {
         userId,
         organizationId,
@@ -158,14 +160,18 @@ export class OnboardingService {
     }
 
     if (wizardData.createFirstInvoice && wizardData.firstInvoiceData) {
+      const invoiceAmount = wizardData.firstInvoiceData.amount;
+      const taxAmount = invoiceAmount * 0.17;
+      const totalAmount = invoiceAmount * 1.17;
+
       const product = await this.prisma.product.create({
         data: {
           organizationId,
           code: 'SERVICE-001',
           name: 'Professional Services',
           unit: 'hour',
-          sellingPrice: wizardData.firstInvoiceData.amount,
-          costPrice: wizardData.firstInvoiceData.amount * 0.6,
+          sellingPrice: invoiceAmount,
+          costPrice: invoiceAmount * 0.6,
           currentStock: 0,
         },
       });
@@ -179,19 +185,18 @@ export class OnboardingService {
           status: 'DRAFT',
           issueDate: new Date(),
           currency: wizardData.organizationCurrency,
-          subtotal: wizardData.firstInvoiceData.amount,
-          taxAmount: wizardData.firstInvoiceData.amount * 0.17,
-          totalAmount: wizardData.firstInvoiceData.amount * 1.17,
+          subtotal: invoiceAmount,
+          taxAmount,
+          totalAmount,
           amountPaid: 0,
+          amountDue: totalAmount,
           lineItems: {
             create: [
               {
                 description: wizardData.firstInvoiceData.description,
                 quantity: 1,
-                unitPrice: wizardData.firstInvoiceData.amount,
-                total: wizardData.firstInvoiceData.amount,
-                // FIX: productId is now a valid field on InvoiceLineItem
-                // (confirmed in invoicing.prisma — relation exists)
+                unitPrice: invoiceAmount,
+                total: invoiceAmount,
                 productId: product.id,
               },
             ],
@@ -201,11 +206,12 @@ export class OnboardingService {
       this.logger.log(`Created first invoice for org ${organizationId}`);
     }
 
-    // FIX: config is now a valid Json? field on Organization (added to workspace.prisma)
+    // FIX: write to `onboardingData` — the actual Json field on Organization.
+    // Prisma.InputJsonValue cast is required for Json field writes.
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
-        config: {
+        onboardingData: {
           onboardingCompleted: true,
           onboardingCompletedAt: new Date().toISOString(),
           wizardData: wizardData as unknown as Prisma.InputJsonValue,

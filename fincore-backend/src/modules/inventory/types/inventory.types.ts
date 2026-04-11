@@ -120,9 +120,19 @@ export interface PurchaseOrderWithLines {
   taxAmount: number;
   totalAmount: number;
   notes: string | null;
-  approvedBy: string | null;
+  approvedBy: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   approvedAt: Date | null;
-  receivedBy: string | null;
+  receivedBy: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   receivedAt: Date | null;
   createdAt: Date;
   lines: PurchaseOrderLineWithProduct[];
@@ -139,6 +149,7 @@ export interface PurchaseOrderLineWithProduct {
   total: number;
 }
 
+// Also update SaleOrderWithLines if needed
 export interface SaleOrderWithLines {
   id: string;
   soNumber: string;
@@ -151,13 +162,45 @@ export interface SaleOrderWithLines {
   taxAmount: number;
   totalAmount: number;
   notes: string | null;
-  approvedBy: string | null;
+  approvedBy: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   approvedAt: Date | null;
-  shippedBy: string | null;
+  shippedBy: {
+    id: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   shippedAt: Date | null;
   invoiceId: string | null;
   createdAt: Date;
   lines: SaleOrderLineWithProduct[];
+}
+
+export interface SaleOrderLineWithProduct {
+  id: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  shippedQty: number;
+  unitPrice: number;
+  total: number;
+}
+
+export interface PurchaseOrderLineWithProduct {
+  id: string;
+  productId: string;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  receivedQty: number;
+  unitPrice: number;
+  total: number;
 }
 
 export interface SaleOrderLineWithProduct {

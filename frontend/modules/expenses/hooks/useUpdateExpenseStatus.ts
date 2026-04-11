@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { expensesApi } from '../api/expenses.api'
 import { queryKeys } from '@/shared/lib/query-keys'
-import { toast } from '@/shared/ui'
+import { toast } from '@/shared/hooks/useToast'
 import type { ExpenseStatus } from '../types/expense.types'
 
 type StatusAction = 
@@ -9,7 +9,7 @@ type StatusAction =
   | { type: 'approveManager'; comment?: string }
   | { type: 'approveFinance'; comment?: string }
   | { type: 'reject'; comment: string }
-  | { type: 'post' }
+  | { type: 'post'; apAccountId: string }
 
 export function useUpdateExpenseStatus(orgId: string, expenseId: string) {
   const queryClient = useQueryClient()
@@ -26,7 +26,7 @@ export function useUpdateExpenseStatus(orgId: string, expenseId: string) {
         case 'reject':
           return expensesApi.reject(orgId, expenseId, action.comment)
         case 'post':
-          return expensesApi.post(orgId, expenseId)
+          return expensesApi.post(orgId, expenseId, action.apAccountId)
       }
     },
     onMutate: async (action) => {
@@ -77,7 +77,7 @@ export function useUpdateExpenseStatus(orgId: string, expenseId: string) {
         reject: 'Expense rejected',
         post: 'Expense posted to ledger',
       }
-      toast.success(statusMessages[action.type] || 'Status updated')
+      toast({ description: statusMessages[action.type] || 'Status updated', variant: 'success' })
       
       queryClient.invalidateQueries({
         queryKey: queryKeys.expenses.all(orgId),
@@ -97,7 +97,7 @@ export function useUpdateExpenseStatus(orgId: string, expenseId: string) {
           context.previousExpense
         )
       }
-      toast.error(error.message || 'Failed to update expense status')
+      toast({ description: error.message || 'Failed to update expense status', variant: 'error' })
     },
   })
 }

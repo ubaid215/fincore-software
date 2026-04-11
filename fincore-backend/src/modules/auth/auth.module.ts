@@ -1,23 +1,44 @@
 // src/modules/auth/auth.module.ts
+
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigModule } from '@nestjs/config';
-import { AuthService } from './services/auth.service';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import type { StringValue } from 'ms';
+
 import { AuthController } from './controllers/auth.controller';
+import { AuthService } from './services/auth.service';
+import { EmailService } from './services/email.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+import { PrismaModule } from '../../database/prisma.module';
 
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    // JwtModule registered without global config — each sign() call
-    // explicitly passes privateKey + algorithm so it works for both
-    // RS256 (production) and HS256 (test fallback)
-    JwtModule.register({}),
-    ConfigModule,
+
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const algorithm = config.get<string>('auth.jwtAlgorithm', 'RS256');
+        const privateKey = config.getOrThrow<string>('auth.jwtPrivateKey');
+        const expiresIn = config.get<string>('auth.jwtExpiresIn', '15m') as StringValue;
+
+        return {
+          privateKey,
+          signOptions: {
+            algorithm: algorithm as any,
+            expiresIn,
+          },
+        };
+      },
+    }),
+
+    PrismaModule,
   ],
-  providers: [AuthService, JwtStrategy],
   controllers: [AuthController],
-  exports: [AuthService, JwtModule, PassportModule],
+  providers: [AuthService, EmailService, JwtStrategy, GoogleStrategy],
+  exports: [AuthService, JwtModule, EmailService],
 })
 export class AuthModule {}

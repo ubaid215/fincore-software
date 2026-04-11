@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { loginSchema, type LoginFormData } from '../types/auth.schema'
@@ -8,7 +9,7 @@ import { Button, Input } from '@/shared/ui'
 
 export function LoginForm() {
   const login = useLogin()
-  
+
   const {
     register,
     handleSubmit,
@@ -34,7 +35,7 @@ export function LoginForm() {
         error={errors.email?.message}
         {...register('email')}
       />
-      
+
       <Input
         label="Password"
         type="password"
@@ -44,9 +45,12 @@ export function LoginForm() {
       />
 
       <div className="flex items-center justify-end">
-        <a href="/forgot-password" className="text-sm text-accent hover:text-accent-hover">
+        <Link
+          href="/forgot-password"
+          className="text-sm text-accent hover:text-accent-hover"
+        >
           Forgot password?
-        </a>
+        </Link>
       </div>
 
       <Button
@@ -60,9 +64,12 @@ export function LoginForm() {
 
       <p className="text-center text-sm text-text-tertiary">
         Don&apos;t have an account?{' '}
-        <a href="/signup" className="text-accent hover:text-accent-hover font-medium">
+        <Link
+          href="/signup"
+          className="text-accent hover:text-accent-hover font-medium"
+        >
           Create account
-        </a>
+        </Link>
       </p>
     </form>
   )

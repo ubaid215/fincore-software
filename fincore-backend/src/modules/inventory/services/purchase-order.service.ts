@@ -1,9 +1,20 @@
 // src/modules/inventory/services/purchase-order.service.ts
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
-import { PurchaseOrderStatus } from '@prisma/client';
+import { Prisma, PurchaseOrderStatus } from '@prisma/client';
 import { CreatePurchaseOrderDto, ReceivePurchaseOrderDto } from '../dto/inventory.dto';
 import { PurchaseOrderWithLines } from '../types/inventory.types';
+
+// Type for PurchaseOrder with included relations
+type PurchaseOrderWithRelations = Prisma.PurchaseOrderGetPayload<{
+  include: {
+    lines: {
+      include: { product: true };
+    };
+    approvedBy: true;
+    receivedBy: true;
+  };
+}>;
 
 @Injectable()
 export class PurchaseOrderService {
@@ -74,7 +85,11 @@ export class PurchaseOrderService {
     return this.findOne(organizationId, purchaseOrder.id);
   }
 
-  async receive(organizationId: string, userId: string, dto: ReceivePurchaseOrderDto) {
+  async receive(
+    organizationId: string,
+    userId: string,
+    dto: ReceivePurchaseOrderDto,
+  ): Promise<PurchaseOrderWithLines> {
     const purchaseOrder = await this.prisma.purchaseOrder.findFirst({
       where: { id: dto.purchaseOrderId, organizationId },
       include: { lines: true },
@@ -116,12 +131,13 @@ export class PurchaseOrderService {
         ? PurchaseOrderStatus.PARTIALLY_RECEIVED
         : PurchaseOrderStatus.SENT;
 
+    // Fix: Use connect syntax for receivedBy relation
     await this.prisma.purchaseOrder.update({
       where: { id: purchaseOrder.id },
       data: {
         status: newStatus,
-        receivedAt: allReceived ? new Date() : undefined,
-        receivedBy: allReceived ? userId : undefined,
+        receivedAt: allReceived ? new Date() : null,
+        receivedBy: allReceived && userId ? { connect: { id: userId } } : undefined,
       },
     });
 
@@ -136,6 +152,22 @@ export class PurchaseOrderService {
         lines: {
           include: { product: true },
         },
+        approvedBy: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        receivedBy: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
     });
 
@@ -144,10 +176,22 @@ export class PurchaseOrderService {
     }
 
     return {
-      ...po,
+      id: po.id,
+      poNumber: po.poNumber,
+      vendorId: po.vendorId,
+      vendorName: po.vendorName,
+      status: po.status,
+      orderDate: po.orderDate,
+      expectedDate: po.expectedDate,
       subtotal: po.subtotal.toNumber(),
       taxAmount: po.taxAmount.toNumber(),
       totalAmount: po.totalAmount.toNumber(),
+      notes: po.notes,
+      approvedBy: po.approvedBy, // Now this matches the interface
+      approvedAt: po.approvedAt,
+      receivedBy: po.receivedBy, // Now this matches the interface
+      receivedAt: po.receivedAt,
+      createdAt: po.createdAt,
       lines: po.lines.map((line) => ({
         id: line.id,
         productId: line.productId,
@@ -165,6 +209,24 @@ export class PurchaseOrderService {
     const [data, total] = await Promise.all([
       this.prisma.purchaseOrder.findMany({
         where: { organizationId },
+        include: {
+          approvedBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          receivedBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -174,10 +236,26 @@ export class PurchaseOrderService {
 
     return {
       data: data.map((po) => ({
-        ...po,
+        id: po.id,
+        organizationId: po.organizationId,
+        poNumber: po.poNumber,
+        vendorId: po.vendorId,
+        vendorName: po.vendorName,
+        status: po.status,
+        orderDate: po.orderDate,
+        expectedDate: po.expectedDate,
         subtotal: po.subtotal.toNumber(),
         taxAmount: po.taxAmount.toNumber(),
         totalAmount: po.totalAmount.toNumber(),
+        notes: po.notes,
+        approvedById: po.approvedById,
+        approvedAt: po.approvedAt,
+        receivedById: po.receivedById,
+        receivedAt: po.receivedAt,
+        createdAt: po.createdAt,
+        updatedAt: po.updatedAt,
+        approvedBy: po.approvedBy,
+        receivedBy: po.receivedBy,
       })),
       total,
       page,

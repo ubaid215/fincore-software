@@ -1,59 +1,108 @@
+// ============================================================
 // prisma/schema/payroll.prisma
-// Domain: Payroll Management
+// Domain : Payroll Management
+// Covers : Employees · Salary Records · Payroll Runs
+// ============================================================
 
 model Employee {
   id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
-  employeeCode   String  @map("employee_code")
-  firstName      String  @map("first_name")
-  lastName       String  @map("last_name")
+  organizationId String   @map("organization_id")
+  contactId      String?  @unique @map("contact_id")  // optional link to Contact record
+  employeeCode   String   @map("employee_code")
+  firstName      String   @map("first_name")
+  lastName       String   @map("last_name")
   email          String
   phone          String?
   department     String?
   designation    String?
-  joinDate       DateTime  @map("join_date")
-  salary         Decimal  @db.Decimal(19, 4)
+  joinDate       DateTime @map("join_date")
+  endDate        DateTime? @map("end_date")            // for contract / resigned employees
+  baseSalary     Decimal  @db.Decimal(19, 4) @map("base_salary")
   bankAccount    String?  @map("bank_account")
+  bankName       String?  @map("bank_name")
+  bankIban       String?  @map("bank_iban")
   cnic           String?
   taxNumber      String?  @map("tax_number")
-  isActive       Boolean  @default(true)  @map("is_active")
-  createdAt      DateTime @default(now())  @map("created_at")
-  updatedAt      DateTime @updatedAt  @map("updated_at")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   salaries     SalaryRecord[]
 
   @@unique([organizationId, employeeCode])
   @@index([organizationId, isActive])
+  @@index([organizationId, department])
+  @@map("employees")
+}
+
+model PayrollRun {
+  id             String         @id @default(uuid())
+  organizationId String         @map("organization_id")
+  month          Int
+  year           Int
+  status         PayrollStatus  @default(DRAFT)
+  totalGross     Decimal        @db.Decimal(19, 4) @map("total_gross")
+  totalNet       Decimal        @db.Decimal(19, 4) @map("total_net")
+  totalTax       Decimal        @db.Decimal(19, 4) @map("total_tax")
+  processedAt    DateTime?      @map("processed_at")
+  processedById  String?        @map("processed_by_id")
+  journalEntryId String?        @map("journal_entry_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  salaryRecords  SalaryRecord[]
+
+  @@unique([organizationId, year, month])
+  @@index([organizationId, status])
+  @@map("payroll_runs")
 }
 
 model SalaryRecord {
-  id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
-  employeeId     String  @map("employee_id")
+  id             String       @id @default(uuid())
+  organizationId String       @map("organization_id")
+  employeeId     String       @map("employee_id")
+  payrollRunId   String?      @map("payroll_run_id")
   month          Int
   year           Int
-  basicSalary    Decimal  @db.Decimal(19, 4)  @map("basic_salary")
-  allowances     Decimal  @db.Decimal(19, 4)
-  bonuses        Decimal  @db.Decimal(19, 4)
-  deductions     Decimal  @db.Decimal(19, 4)
-  netSalary      Decimal  @db.Decimal(19, 4)  @map("net_salary")
+  basicSalary    Decimal      @db.Decimal(19, 4) @map("basic_salary")
+  allowances     Decimal      @default(0) @db.Decimal(19, 4)
+  bonuses        Decimal      @default(0) @db.Decimal(19, 4)
+  deductions     Decimal      @default(0) @db.Decimal(19, 4)
+  taxAmount      Decimal      @default(0) @db.Decimal(19, 4) @map("tax_amount")
+  netSalary      Decimal      @db.Decimal(19, 4) @map("net_salary")
   status         SalaryStatus @default(PENDING)
-  paidAt         DateTime?  @map("paid_at")
-  journalEntryId String?  @map("journal_entry_id")
-  createdAt      DateTime @default(now())  @map("created_at")
+  paidAt         DateTime?    @map("paid_at")
+  journalEntryId String?      @map("journal_entry_id")
+  notes          String?
+  createdAt      DateTime     @default(now()) @map("created_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollRun    PayrollRun?   @relation(fields: [payrollRunId], references: [id])
+  journalEntry  JournalEntry? @relation("SalaryJournalEntry", fields: [journalEntryId], references: [id])
 
   @@unique([organizationId, employeeId, year, month])
   @@index([organizationId, status])
   @@index([employeeId])
+  @@index([payrollRunId])
+  @@map("salary_records")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum SalaryStatus {
   PENDING
   PROCESSED
   PAID
+  CANCELLED
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSING
+  COMPLETED
   CANCELLED
 }

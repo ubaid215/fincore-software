@@ -1,27 +1,86 @@
+// ============================================================
 // prisma/schema/audit.prisma
-// Domain: Audit Logging (cross-cutting)
-// Owner:  Lead / DevOps
-// Models: AuditLog
-//
-// Written to for every significant state change across all domains.
-// Tagged with organizationId for multi-tenant isolation.
-// Append-only — no updates or deletes.
+// Domain : Audit Logging & Real-time Event Bus
+// Covers : Immutable audit trail (finance-grade)
+//          Socket.io notification log
+//          Append-only — never update or delete rows
+// ============================================================
 
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG  — every significant state change across all apps
+// Tagged with organizationId for perfect tenant isolation.
+// Finance regulators (FBR/SECP) require this trail.
+// ─────────────────────────────────────────────────────────────
 model AuditLog {
   id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
+  organizationId String   @map("organization_id")
   userId         String?  @map("user_id")
-  action         String   // e.g. "invoice.sent", "expense.approved", "payment.confirmed"
-  resourceType   String   // e.g. "Invoice", "Expense", "ManualPayment"  @map("resource_type")
-  resourceId     String  @map("resource_id")
-  metadata       Json?    // Any extra context — old/new state, amounts, etc.
+
+  // ── What happened ────────────────────────────────────────
+  app            AppKey?                          // which app generated this log
+  action         String                           // "invoice.sent" | "role.changed" | …
+  resourceType   String   @map("resource_type")  // "Invoice" | "User" | "Expense" | …
+  resourceId     String   @map("resource_id")
+  metadata       Json?                            // { before: {}, after: {} } for diffs
+
+  // ── Who & where ──────────────────────────────────────────
   ipAddress      String?  @map("ip_address")
   userAgent      String?  @map("user_agent")
-  createdAt      DateTime @default(now())  @map("created_at")
+
+  createdAt      DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation("UserAuditLogs", fields: [userId], references: [id])
 
   @@index([organizationId, resourceType, resourceId])
   @@index([organizationId, action])
   @@index([organizationId, createdAt])
+  @@index([organizationId, app])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// NOTIFICATION  — persisted notifications for Socket.io
+// Socket delivers in real-time; this table persists for
+// users who are offline, plus in-app notification centre.
+// ─────────────────────────────────────────────────────────────
+model Notification {
+  id             String           @id @default(uuid())
+  organizationId String           @map("organization_id")
+  userId         String           @map("user_id")          // recipient
+  type           NotificationType
+  title          String
+  body           String
+  app            AppKey?                                    // which app it's from
+  resourceType   String?          @map("resource_type")    // "Invoice" etc.
+  resourceId     String?          @map("resource_id")
+  isRead         Boolean          @default(false) @map("is_read")
+  readAt         DateTime?        @map("read_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  @@index([organizationId, userId, isRead])
+  @@index([organizationId, userId, createdAt])
+  @@map("notifications")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  INVOICE_SENT
+  INVOICE_PAID
+  INVOICE_OVERDUE
+  EXPENSE_SUBMITTED
+  EXPENSE_APPROVED
+  EXPENSE_REJECTED
+  PAYMENT_RECEIVED
+  APPOINTMENT_REMINDER
+  DOCUMENT_SIGNED
+  DOCUMENT_SIGNATURE_REQUEST
+  SALARY_PROCESSED
+  STOCK_LOW
+  SYSTEM_ALERT
+  CUSTOM
 }

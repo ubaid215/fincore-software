@@ -1,4 +1,8 @@
+// ============================================================
 // prisma/schema/schema.prisma
+// Generator & datasource — single source of truth
+// ============================================================
+
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["prismaSchemaFolder"]

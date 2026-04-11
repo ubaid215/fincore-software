@@ -4,21 +4,21 @@ import type { Account } from '../types/ledger.types'
 export const accountsApi = {
   // Get chart of accounts
   list: (orgId: string) =>
-    apiClient.get<Account[]>(`/organizations/${orgId}/accounts`),
+    apiClient.get<Account[]>(`/v1/accounts`),
 
   // Get account by ID
   get: (orgId: string, id: string) =>
-    apiClient.get<Account>(`/organizations/${orgId}/accounts/${id}`),
+    apiClient.get<Account>(`/v1/accounts/${id}`),
 
   // Get account tree (hierarchical)
   tree: (orgId: string) =>
-    apiClient.get<Account[]>(`/organizations/${orgId}/accounts/tree`),
+    apiClient.get<Account[]>(`/v1/accounts/tree`),
 
   // Create account
   create: (orgId: string, data: Partial<Account>) =>
-    apiClient.post<Account>(`/organizations/${orgId}/accounts`, data),
+    apiClient.post<Account>(`/v1/accounts`, data),
 
   // Update account
   update: (orgId: string, id: string, data: Partial<Account>) =>
-    apiClient.patch<Account>(`/organizations/${orgId}/accounts/${id}`, data),
+    apiClient.patch<Account>(`/v1/accounts/${id}`, data),
 }

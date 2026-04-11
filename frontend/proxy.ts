@@ -1,81 +1,73 @@
-import { NextRequest, NextResponse } from 'next/server'
+// proxy.ts - bcz of next.js 16+
+import { NextRequest, NextResponse } from 'next/server';
 
-// Routes accessible without authentication
-const PUBLIC_ROUTES = new Set([
-  '/login',
-  '/signup',
-  '/forgot-password',
-  '/reset-password',
-  '/invite',
-  // Marketing pages - add these
-  '/home',
+// ─────────────────────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────────────────────
+
+const PROTECTED_PREFIXES = ['/select', '/onboarding'];
+const ORG_PATTERN = /^\/[0-9a-f-]{36}\//;
+
+const AUTH_ROUTES = ['/login', '/register', '/forgot-password'];
+
+// Public marketing routes (add freely)
+const MARKETING_ROUTES = [
+  '/',
   '/pricing',
-  '/features',
   '/about',
   '/contact',
-  '/blog',
-])
+  '/features',
+];
 
-// Routes that bypass all auth checks
-const BYPASS_ROUTES = [
-  '/api/auth/',
-  '/_next/',
-  '/favicon',
-  '/robots',
-  '/sitemap',
-  '/sw.js',
-  '/legal/',      // Add legal routes
-]
+const REFRESH_COOKIE = 'refresh_token';
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+// ─────────────────────────────────────────────────────────────
+// PROXY FUNCTION
+// ─────────────────────────────────────────────────────────────
 
-  // Bypass static/internal routes immediately
-  if (BYPASS_ROUTES.some((p) => pathname.startsWith(p))) {
-    return NextResponse.next()
+export function proxy(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  const hasRefreshCookie = req.cookies.has(REFRESH_COOKIE);
+
+  // ── 1. Allow marketing routes always ────────────────────────
+  const isMarketing =
+    MARKETING_ROUTES.includes(pathname) ||
+    pathname.startsWith('/blog'); // optional dynamic marketing
+
+  if (isMarketing) {
+    return NextResponse.next();
   }
 
-  // Public marketing pages - allow all marketing routes
-  if (PUBLIC_ROUTES.has(pathname) || pathname.startsWith('/blog/') || pathname.startsWith('/legal/')) {
-    return NextResponse.next()
+  // ── 2. Protect app routes ───────────────────────────────────
+  const isProtected =
+    PROTECTED_PREFIXES.some((p) => pathname.startsWith(p)) ||
+    ORG_PATTERN.test(pathname);
+
+  if (isProtected && !hasRefreshCookie) {
+    const loginUrl = new URL('/login', req.url);
+    loginUrl.searchParams.set('next', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  // Root redirect
-  if (pathname === '/') {
-    return NextResponse.next()
+  // ── 3. Redirect logged-in users away from auth pages ────────
+  const isAuthPage = AUTH_ROUTES.some((r) =>
+    pathname.startsWith(r)
+  );
+
+  if (isAuthPage && hasRefreshCookie) {
+    return NextResponse.redirect(new URL('/select', req.url));
   }
 
-  const hasRefreshToken = request.cookies.has('fincore_refresh')
-
-  // Unauthenticated user hitting a protected route → login
-  if (!hasRefreshToken && !PUBLIC_ROUTES.has(pathname)) {
-    const loginUrl = new URL('/login', request.url)
-    loginUrl.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(loginUrl)
-  }
-
-  // Authenticated user hitting auth pages → redirect to dashboard
-  if (hasRefreshToken && PUBLIC_ROUTES.has(pathname)) {
-    return NextResponse.redirect(new URL('/dashboard/select', request.url))
-  }
-
-  // Tenant-scoped route guard
-  const orgMatch = pathname.match(/^\/dashboard\/([a-zA-Z0-9_-]+)/)
-  if (orgMatch && orgMatch[1] !== 'select') {
-    const orgId = orgMatch[1]
-    const allowedOrgsCookie = request.cookies.get('fincore_orgs')
-    const allowedOrgs = allowedOrgsCookie?.value?.split(',') ?? []
-
-    if (allowedOrgs.length > 0 && !allowedOrgs.includes(orgId)) {
-      return NextResponse.redirect(new URL('/dashboard/select', request.url))
-    }
-  }
-
-  return NextResponse.next()
+  // ── 4. Default pass-through ─────────────────────────────────
+  return NextResponse.next();
 }
+
+// ─────────────────────────────────────────────────────────────
+// MATCHER
+// ─────────────────────────────────────────────────────────────
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:ico|png|svg|jpg|jpeg|webp|woff2|woff|ttf)).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)',
   ],
-}
+};

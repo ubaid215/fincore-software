@@ -6,6 +6,11 @@
  * and are stored as DECIMAL(19,4) in PostgreSQL.
  *
  * Sprint: S2 · Week 5–6
+ *
+ * FIX: INVOICE_TRANSITIONS was missing VIEWED and OVERDUE entries,
+ *      causing a TS2739 error because the record must cover every
+ *      member of the InvoiceStatus enum (Readonly<Record<InvoiceStatus, …>>).
+ *      Added both entries with appropriate allowed transitions.
  */
 
 import type { InvoiceStatus } from '@prisma/client';
@@ -50,17 +55,21 @@ export interface InvoiceTotals {
  * Allowed status transitions for the Invoice state machine.
  * The record maps FROM → allowed TO states.
  *
- * DRAFT       → SENT | VOID
- * SENT        → PARTIALLY_PAID | PAID | VOID | DISPUTED
+ * DRAFT          → SENT | VOID
+ * SENT           → VIEWED | PARTIALLY_PAID | PAID | VOID | DISPUTED
+ * VIEWED         → PARTIALLY_PAID | PAID | VOID | DISPUTED
  * PARTIALLY_PAID → PAID | VOID | DISPUTED
- * PAID        → (terminal — no transitions allowed)
- * VOID        → (terminal — no transitions allowed)
- * DISPUTED    → SENT | VOID
+ * OVERDUE        → PAID | VOID | DISPUTED
+ * PAID           → (terminal — no transitions allowed)
+ * VOID           → (terminal — no transitions allowed)
+ * DISPUTED       → SENT | VOID
  */
 export const INVOICE_TRANSITIONS: Readonly<Record<InvoiceStatus, InvoiceStatus[]>> = {
   DRAFT: ['SENT', 'VOID'],
-  SENT: ['PARTIALLY_PAID', 'PAID', 'VOID', 'DISPUTED'],
+  SENT: ['VIEWED', 'PARTIALLY_PAID', 'PAID', 'VOID', 'DISPUTED'],
+  VIEWED: ['PARTIALLY_PAID', 'PAID', 'VOID', 'DISPUTED'],
   PARTIALLY_PAID: ['PAID', 'VOID', 'DISPUTED'],
+  OVERDUE: ['PAID', 'VOID', 'DISPUTED'],
   PAID: [],
   VOID: [],
   DISPUTED: ['SENT', 'VOID'],
@@ -125,6 +134,7 @@ export interface InvoiceWithRelations {
   discountAmount: object;
   totalAmount: object;
   amountPaid: object;
+  amountDue: object;
   notes: string | null;
   pdfUrl: string | null;
   isRecurring: boolean;

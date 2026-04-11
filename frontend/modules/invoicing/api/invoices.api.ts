@@ -12,37 +12,37 @@ import type { PaginatedResponse } from '@/shared/types'
 export const invoicesApi = {
   // Get paginated list of invoices
   list: (orgId: string, filters?: InvoiceFilters) =>
-    apiClient.get<PaginatedResponse<Invoice>>(`/organizations/${orgId}/invoices`, {
+    apiClient.get<PaginatedResponse<Invoice>>(`/v1/invoices`, {
       params: filters,
     }),
 
   // Get single invoice by ID
   get: (orgId: string, id: string) =>
-    apiClient.get<Invoice>(`/organizations/${orgId}/invoices/${id}`),
+    apiClient.get<Invoice>(`/v1/invoices/${id}`),
 
   // Create new invoice
   create: (orgId: string, data: CreateInvoiceRequest) =>
-    apiClient.post<Invoice>(`/organizations/${orgId}/invoices`, data),
+    apiClient.post<Invoice>(`/v1/invoices`, data),
 
   // Update existing invoice
   update: (orgId: string, id: string, data: UpdateInvoiceRequest) =>
-    apiClient.patch<Invoice>(`/organizations/${orgId}/invoices/${id}`, data),
+    apiClient.patch<Invoice>(`/v1/invoices/${id}`, data),
 
   // Send invoice via email
   send: (orgId: string, id: string, data: SendInvoiceRequest) =>
-    apiClient.post<{ success: boolean }>(`/organizations/${orgId}/invoices/${id}/send`, data),
+    apiClient.post<{ success: boolean }>(`/v1/invoices/${id}/send`, data),
 
   // Record payment on invoice
   recordPayment: (orgId: string, id: string, data: RecordPaymentRequest) =>
-    apiClient.post<Invoice>(`/organizations/${orgId}/invoices/${id}/payments`, data),
+    apiClient.post<Invoice>(`/v1/invoices/${id}/payments`, data),
 
   // Void invoice
   void: (orgId: string, id: string, reason?: string) =>
-    apiClient.post<Invoice>(`/organizations/${orgId}/invoices/${id}/void`, { reason }),
+    apiClient.post<Invoice>(`/v1/invoices/${id}/void`, { reason }),
 
   // Download PDF
   downloadPdf: (orgId: string, id: string) =>
-    apiClient.get<Blob>(`/organizations/${orgId}/invoices/${id}/pdf`, {
+    apiClient.get<Blob>(`/v1/invoices/${id}/pdf`, {
       responseType: 'blob',
     }),
 }

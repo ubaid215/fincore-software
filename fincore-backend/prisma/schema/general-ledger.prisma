@@ -1,52 +1,70 @@
+// ============================================================
 // prisma/schema/general-ledger.prisma
-// Domain: General Ledger
-// Owner:  GL team
+// Domain : General Ledger
+// Covers : Journal Entries · Lines · Multi-currency FX
+// ============================================================
 
 model JournalEntry {
   id             String             @id @default(uuid())
-  organizationId String  @map("organization_id")
-  periodId       String?  @map("period_id")
-  entryNumber    String  @map("entry_number")
+  organizationId String             @map("organization_id")
+  periodId       String?            @map("period_id")
+  entryNumber    String             @map("entry_number")
   description    String
   reference      String?
-  entryDate      DateTime  @map("entry_date")
+  entryDate      DateTime           @map("entry_date")
   status         JournalEntryStatus @default(DRAFT)
-  isReversed     Boolean            @default(false)  @map("is_reversed")
-  reversalOfId   String?  @map("reversal_of_id")
-  postedAt       DateTime?  @map("posted_at")
-  createdAt      DateTime           @default(now())  @map("created_at")
-  updatedAt      DateTime           @updatedAt  @map("updated_at")
+  source         String?            // "INVOICE" | "EXPENSE" | "PAYROLL" | "MANUAL"
+  isReversed     Boolean            @default(false) @map("is_reversed")
+  reversalOfId   String?            @map("reversal_of_id")
+  postedAt       DateTime?          @map("posted_at")
+  postedById     String?            @map("posted_by_id")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  period       FiscalPeriod? @relation(fields: [periodId], references: [id])
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  period       FiscalPeriod?  @relation(fields: [periodId], references: [id])
   lines        JournalLine[]
-  reversalOf   JournalEntry? @relation("EntryReversal", fields: [reversalOfId], references: [id])
+  reversalOf   JournalEntry?  @relation("EntryReversal", fields: [reversalOfId], references: [id])
   reversals    JournalEntry[] @relation("EntryReversal")
+  salaryRecords SalaryRecord[] @relation("SalaryJournalEntry")
 
   @@unique([organizationId, entryNumber])
   @@index([organizationId, status])
   @@index([organizationId, entryDate])
+  @@index([organizationId, source])
+  @@map("journal_entries")
 }
 
 model JournalLine {
   id                 String   @id @default(uuid())
-  journalEntryId     String  @map("journal_entry_id")
-  accountId          String  @map("account_id")
+  journalEntryId     String   @map("journal_entry_id")
+  accountId          String   @map("account_id")
   description        String?
   debit              Decimal  @default(0) @db.Decimal(19, 4)
   credit             Decimal  @default(0) @db.Decimal(19, 4)
   currency           String   @default("PKR")
-  fxRate             Decimal  @default(1) @db.Decimal(19, 6)  @map("fx_rate")
-  baseCurrencyDebit  Decimal  @default(0) @db.Decimal(19, 4)  @map("base_currency_debit")
-  baseCurrencyCredit Decimal  @default(0) @db.Decimal(19, 4)  @map("base_currency_credit")
-  createdAt          DateTime @default(now())  @map("created_at")
+  fxRate             Decimal  @default(1) @db.Decimal(19, 6) @map("fx_rate")
+  baseCurrencyDebit  Decimal  @default(0) @db.Decimal(19, 4) @map("base_currency_debit")
+  baseCurrencyCredit Decimal  @default(0) @db.Decimal(19, 4) @map("base_currency_credit")
+
+  // Optional link back to source record for drill-down
+  sourceType         String?  @map("source_type")  // "Invoice" | "Expense" etc.
+  sourceId           String?  @map("source_id")
+
+  createdAt          DateTime @default(now()) @map("created_at")
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
   account      Account      @relation(fields: [accountId], references: [id])
 
   @@index([journalEntryId])
   @@index([accountId])
+  @@index([sourceType, sourceId])
+  @@map("journal_lines")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum JournalEntryStatus {
   DRAFT

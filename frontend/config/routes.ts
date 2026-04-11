@@ -12,18 +12,18 @@ export const authRoutes = {
   acceptInvite:   (token: string) => `/invite?token=${token}`,
 } as const
 
-// --- Dashboard root ---
+// --- Dashboard root (inside the (dashboard) route group) ---
 export const dashboardRoutes = {
-  selectOrg: '/dashboard/select',
+  selectOrg: '/select',
   home:      (orgId: string) => `/dashboard/${orgId}`,
 } as const
 
-// --- Module routes (scoped to orgId) ---
+// --- Module routes (all scoped under /dashboard/[orgId]) ---
 export const invoicingRoutes = {
-  list:   (orgId: string)              => `/dashboard/${orgId}/invoices`,
-  new:    (orgId: string)              => `/dashboard/${orgId}/invoices/new`,
-  detail: (orgId: string, id: string)  => `/dashboard/${orgId}/invoices/${id}`,
-  edit:   (orgId: string, id: string)  => `/dashboard/${orgId}/invoices/${id}/edit`,
+  list:   (orgId: string)             => `/dashboard/${orgId}/invoices`,
+  new:    (orgId: string)             => `/dashboard/${orgId}/invoices/new`,
+  detail: (orgId: string, id: string) => `/dashboard/${orgId}/invoices/${id}`,
+  edit:   (orgId: string, id: string) => `/dashboard/${orgId}/invoices/${id}/edit`,
 } as const
 
 export const expenseRoutes = {
@@ -34,10 +34,10 @@ export const expenseRoutes = {
 } as const
 
 export const ledgerRoutes = {
-  accounts: (orgId: string)             => `/dashboard/${orgId}/accounts`,
-  journal:  (orgId: string)             => `/dashboard/${orgId}/journal`,
-  entry:    (orgId: string, id: string) => `/dashboard/${orgId}/journal/${id}`,
-  trialBalance: (orgId: string)         => `/dashboard/${orgId}/trial-balance`,
+  accounts:     (orgId: string)             => `/dashboard/${orgId}/accounts`,
+  journal:      (orgId: string)             => `/dashboard/${orgId}/journal`,
+  entry:        (orgId: string, id: string) => `/dashboard/${orgId}/journal/${id}`,
+  trialBalance: (orgId: string)             => `/dashboard/${orgId}/trial-balance`,
 } as const
 
 export const inventoryRoutes = {

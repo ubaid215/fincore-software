@@ -1,9 +1,13 @@
+// ============================================================
 // prisma/schema/inventory.prisma
-// Domain: Inventory Management
+// Domain : Inventory Management
+// Covers : Products · Batches · Stock Movements · Snapshots
+//          Purchase Orders · Sale Orders
+// ============================================================
 
 model Product {
-  id                 String            @id @default(uuid())
-  organizationId     String  @map("organization_id")
+  id                 String   @id @default(uuid())
+  organizationId     String   @map("organization_id")
   code               String
   barcode            String?
   name               String
@@ -11,196 +15,227 @@ model Product {
   category           String?
   brand              String?
   unit               String
-  sellingPrice       Decimal           @db.Decimal(19, 4)  @map("selling_price")
-  costPrice          Decimal           @db.Decimal(19, 4)  @map("cost_price")
-  wholesalePrice     Decimal?          @db.Decimal(19, 4)  @map("wholesale_price")
-  taxRate            Decimal           @default(0) @db.Decimal(5, 2)  @map("tax_rate")
-  currentStock       Int               @default(0)  @map("current_stock")
-  minStockLevel      Int?  @map("min_stock_level")
-  maxStockLevel      Int?  @map("max_stock_level")
-  reorderQuantity    Int?  @map("reorder_quantity")
-  trackSerialNumbers Boolean           @default(false)  @map("track_serial_numbers")
-  trackBatchNumbers  Boolean           @default(false)  @map("track_batch_numbers")
-  trackExpiry        Boolean           @default(false)  @map("track_expiry")
-  isActive           Boolean           @default(true)  @map("is_active")
+  sellingPrice       Decimal  @db.Decimal(19, 4) @map("selling_price")
+  costPrice          Decimal  @db.Decimal(19, 4) @map("cost_price")
+  wholesalePrice     Decimal? @db.Decimal(19, 4) @map("wholesale_price")
+  // Stored as percentage: 18.00 = 18% (not fraction — different from InvoiceLineItem)
+  taxRate            Decimal  @default(0) @db.Decimal(5, 2) @map("tax_rate")
+  currentStock       Int      @default(0) @map("current_stock")
+  minStockLevel      Int?     @map("min_stock_level")
+  maxStockLevel      Int?     @map("max_stock_level")
+  reorderQuantity    Int?     @map("reorder_quantity")
+  trackSerialNumbers Boolean  @default(false) @map("track_serial_numbers")
+  trackBatchNumbers  Boolean  @default(false) @map("track_batch_numbers")
+  trackExpiry        Boolean  @default(false) @map("track_expiry")
+  isActive           Boolean  @default(true) @map("is_active")
+  imageUrl           String?  @map("image_url")
+
+  // ── GL account links ─────────────────────────────────────
   salesAccountId     String?  @map("sales_account_id")
   cogsAccountId      String?  @map("cogs_account_id")
   inventoryAccountId String?  @map("inventory_account_id")
-  imageUrl           String?  @map("image_url")
-  createdAt          DateTime          @default(now())  @map("created_at")
-  updatedAt          DateTime          @updatedAt  @map("updated_at")
 
-  organization       Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  salesAccount       Account?          @relation("ProductSalesAccount", fields: [salesAccountId], references: [id])
-  cogsAccount        Account?          @relation("ProductCogsAccount", fields: [cogsAccountId], references: [id])
-  inventoryAccount   Account?          @relation("ProductInventoryAccount", fields: [inventoryAccountId], references: [id])
-  
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  salesAccount       Account?           @relation("ProductSalesAccount", fields: [salesAccountId], references: [id])
+  cogsAccount        Account?           @relation("ProductCogsAccount", fields: [cogsAccountId], references: [id])
+  inventoryAccount   Account?           @relation("ProductInventoryAccount", fields: [inventoryAccountId], references: [id])
   stockMovements     StockMovement[]
   inventoryBatches   InventoryBatch[]
   purchaseOrderLines PurchaseOrderLine[]
   saleOrderLines     SaleOrderLine[]
   invoiceLines       InvoiceLineItem[]
-  stockSnapshots     StockSnapshot[]   // ADD THIS
+  stockSnapshots     StockSnapshot[]
 
   @@unique([organizationId, code])
-  @@unique([organizationId, barcode])
   @@index([organizationId, category])
   @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+  // Partial unique index for non-null barcodes only — see NOTE below
+  // Create manually in migration: CREATE UNIQUE INDEX ON products(organization_id, barcode) WHERE barcode IS NOT NULL;
+  @@map("products")
 }
 
 model InventoryBatch {
-  id             String        @id @default(uuid())
-  organizationId String  @map("organization_id")
-  productId      String  @map("product_id")
-  batchNumber    String  @map("batch_number")
-  serialNumber   String?  @map("serial_number")
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  productId      String    @map("product_id")
+  batchNumber    String    @map("batch_number")
+  serialNumber   String?   @map("serial_number")
   quantity       Int
-  remainingQty   Int  @map("remaining_qty")
-  costPrice      Decimal       @db.Decimal(19, 4)  @map("cost_price")
+  remainingQty   Int       @map("remaining_qty")
+  costPrice      Decimal   @db.Decimal(19, 4) @map("cost_price")
   purchaseDate   DateTime  @map("purchase_date")
-  expiryDate     DateTime?  @map("expiry_date")
-  createdAt      DateTime      @default(now())  @map("created_at")
+  expiryDate     DateTime? @map("expiry_date")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
-  product        Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   stockMovements StockMovement[]
 
   @@unique([organizationId, batchNumber])
-  @@unique([organizationId, serialNumber])
   @@index([organizationId, productId, expiryDate])
+  @@map("inventory_batches")
 }
 
 model StockMovement {
   id             String            @id @default(uuid())
-  organizationId String  @map("organization_id")
-  productId      String  @map("product_id")
-  batchId        String?  @map("batch_id")
-  movementType   StockMovementType
+  organizationId String            @map("organization_id")
+  productId      String            @map("product_id")
+  batchId        String?           @map("batch_id")
+  movementType   StockMovementType @map("movement_type")
   quantity       Int
-  referenceId    String?  @map("reference_id")
-  referenceType  String?  @map("reference_type")
-  unitPrice      Decimal?          @db.Decimal(19, 4)  @map("unit_price")
+  referenceId    String?           @map("reference_id")    // PO.id | SO.id | Adjustment.id
+  referenceType  String?           @map("reference_type")  // "PurchaseOrder" | "SaleOrder"
+  unitPrice      Decimal?          @db.Decimal(19, 4) @map("unit_price")
   notes          String?
-  createdBy      String  @map("created_by")
-  createdAt      DateTime          @default(now())  @map("created_at")
+  createdById    String            @map("created_by_id")
+  createdAt      DateTime          @default(now()) @map("created_at")
 
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  product        Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  batch          InventoryBatch?   @relation(fields: [batchId], references: [id])
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  batch          InventoryBatch? @relation(fields: [batchId], references: [id])
+  createdBy      User            @relation("StockMovementCreator", fields: [createdById], references: [id])
 
   @@index([organizationId, productId])
   @@index([organizationId, createdAt])
   @@index([referenceId, referenceType])
+  @@map("stock_movements")
 }
 
 model StockSnapshot {
   id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
-  productId      String  @map("product_id")
-  asOfDate       DateTime  @map("as_of_date")
-  quantityOnHand Int  @map("quantity_on_hand")
-  valueAtCost    Decimal  @db.Decimal(19, 4)  @map("value_at_cost")
-  valueAtSelling Decimal  @db.Decimal(19, 4)  @map("value_at_selling")
-  createdAt      DateTime @default(now())  @map("created_at")
+  organizationId String   @map("organization_id")
+  productId      String   @map("product_id")
+  asOfDate       DateTime @map("as_of_date")
+  quantityOnHand Int      @map("quantity_on_hand")
+  valueAtCost    Decimal  @db.Decimal(19, 4) @map("value_at_cost")
+  valueAtSelling Decimal  @db.Decimal(19, 4) @map("value_at_selling")
+  createdAt      DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, productId, asOfDate])
   @@index([organizationId, asOfDate])
+  @@map("stock_snapshots")
 }
 
 model PurchaseOrder {
   id             String              @id @default(uuid())
-  organizationId String  @map("organization_id")
-  poNumber       String              @unique  @map("po_number")
-  vendorId       String?  @map("vendor_id")
-  vendorName     String  @map("vendor_name")
+  organizationId String              @map("organization_id")
+  poNumber       String              @map("po_number")
+  vendorId       String?             @map("vendor_id")
+  vendorName     String              @map("vendor_name")     // snapshot
+  vendorEmail    String?             @map("vendor_email")
   status         PurchaseOrderStatus @default(DRAFT)
-  orderDate      DateTime            @default(now())  @map("order_date")
-  expectedDate   DateTime?  @map("expected_date")
+  orderDate      DateTime            @default(now()) @map("order_date")
+  expectedDate   DateTime?           @map("expected_date")
+  currency       String              @default("PKR")
   subtotal       Decimal             @db.Decimal(19, 4)
-  taxAmount      Decimal             @default(0) @db.Decimal(19, 4)  @map("tax_amount")
-  totalAmount    Decimal             @db.Decimal(19, 4)  @map("total_amount")
+  taxAmount      Decimal             @default(0) @db.Decimal(19, 4) @map("tax_amount")
+  totalAmount    Decimal             @db.Decimal(19, 4) @map("total_amount")
   notes          String?
-  approvedBy     String?  @map("approved_by")
-  approvedAt     DateTime?  @map("approved_at")
-  receivedBy     String?  @map("received_by")
-  receivedAt     DateTime?  @map("received_at")
-  createdAt      DateTime            @default(now())  @map("created_at")
-  updatedAt      DateTime            @updatedAt  @map("updated_at")
+  approvedById   String?             @map("approved_by_id")
+  approvedAt     DateTime?           @map("approved_at")
+  receivedById   String?             @map("received_by_id")
+  receivedAt     DateTime?           @map("received_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
 
   organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vendor         Contact?            @relation("VendorPurchaseOrders", fields: [vendorId], references: [id])
+  approvedBy     User?               @relation("POApprover", fields: [approvedById], references: [id])
+  receivedBy     User?               @relation("POReceiver", fields: [receivedById], references: [id])
   lines          PurchaseOrderLine[]
 
+  @@unique([organizationId, poNumber])
   @@index([organizationId, status])
-  @@index([organizationId, poNumber])
+  @@index([vendorId])
+  @@map("purchase_orders")
 }
 
 model PurchaseOrderLine {
   id              String   @id @default(uuid())
-  purchaseOrderId String  @map("purchase_order_id")
-  productId       String  @map("product_id")
-  productCode     String  @map("product_code")
-  productName     String  @map("product_name")
+  purchaseOrderId String   @map("purchase_order_id")
+  productId       String   @map("product_id")
+  productCode     String   @map("product_code")   // snapshot
+  productName     String   @map("product_name")   // snapshot
   quantity        Int
-  receivedQty     Int      @default(0)  @map("received_qty")
-  unitPrice       Decimal  @db.Decimal(19, 4)  @map("unit_price")
+  receivedQty     Int      @default(0) @map("received_qty")
+  unitPrice       Decimal  @db.Decimal(19, 4) @map("unit_price")
+  taxRate         Decimal  @default(0) @db.Decimal(7, 4) @map("tax_rate")
   total           Decimal  @db.Decimal(19, 4)
 
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  product         Product       @relation(fields: [productId], references: [id])
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id])
 
   @@index([purchaseOrderId])
   @@index([productId])
+  @@map("purchase_order_lines")
 }
 
 model SaleOrder {
   id             String          @id @default(uuid())
-  organizationId String  @map("organization_id")
-  soNumber       String          @unique  @map("so_number")
-  customerId     String?  @map("customer_id")
-  customerName   String  @map("customer_name")
+  organizationId String          @map("organization_id")
+  soNumber       String          @map("so_number")
+  customerId     String?         @map("customer_id")
+  customerName   String          @map("customer_name")    // snapshot
+  customerEmail  String?         @map("customer_email")
   status         SaleOrderStatus @default(DRAFT)
-  orderDate      DateTime        @default(now())  @map("order_date")
-  deliveryDate   DateTime?  @map("delivery_date")
+  orderDate      DateTime        @default(now()) @map("order_date")
+  deliveryDate   DateTime?       @map("delivery_date")
+  currency       String          @default("PKR")
   subtotal       Decimal         @db.Decimal(19, 4)
-  taxAmount      Decimal         @default(0) @db.Decimal(19, 4)  @map("tax_amount")
-  totalAmount    Decimal         @db.Decimal(19, 4)  @map("total_amount")
+  taxAmount      Decimal         @default(0) @db.Decimal(19, 4) @map("tax_amount")
+  totalAmount    Decimal         @db.Decimal(19, 4) @map("total_amount")
   notes          String?
-  approvedBy     String?  @map("approved_by")
-  approvedAt     DateTime?  @map("approved_at")
-  shippedBy      String?  @map("shipped_by")
-  shippedAt      DateTime?  @map("shipped_at")
-  invoiceId      String?  @map("invoice_id")
-  createdAt      DateTime        @default(now())  @map("created_at")
-  updatedAt      DateTime        @updatedAt  @map("updated_at")
+  approvedById   String?         @map("approved_by_id")
+  approvedAt     DateTime?       @map("approved_at")
+  shippedById    String?         @map("shipped_by_id")
+  shippedAt      DateTime?       @map("shipped_at")
+  invoiceId      String?         @map("invoice_id")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  customer       Contact?        @relation("CustomerSaleOrders", fields: [customerId], references: [id])
-  lines          SaleOrderLine[]
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Contact?     @relation("CustomerSaleOrders", fields: [customerId], references: [id])
+  approvedBy   User?        @relation("SOApprover", fields: [approvedById], references: [id])
+  shippedBy    User?        @relation("SOShipper", fields: [shippedById], references: [id])
+  invoice      Invoice?     @relation("SaleOrderInvoice", fields: [invoiceId], references: [id])
+  lines        SaleOrderLine[]
 
+  @@unique([organizationId, soNumber])
   @@index([organizationId, status])
-  @@index([organizationId, soNumber])
+  @@index([customerId])
+  @@map("sale_orders")
 }
 
 model SaleOrderLine {
-  id            String   @id @default(uuid())
-  saleOrderId   String  @map("sale_order_id")
-  productId     String  @map("product_id")
-  productCode   String  @map("product_code")
-  productName   String  @map("product_name")
-  quantity      Int
-  shippedQty    Int      @default(0)  @map("shipped_qty")
-  unitPrice     Decimal  @db.Decimal(19, 4)  @map("unit_price")
-  total         Decimal  @db.Decimal(19, 4)
+  id          String   @id @default(uuid())
+  saleOrderId String   @map("sale_order_id")
+  productId   String   @map("product_id")
+  productCode String   @map("product_code")
+  productName String   @map("product_name")
+  quantity    Int
+  shippedQty  Int      @default(0) @map("shipped_qty")
+  unitPrice   Decimal  @db.Decimal(19, 4) @map("unit_price")
+  taxRate     Decimal  @default(0) @db.Decimal(7, 4) @map("tax_rate")
+  total       Decimal  @db.Decimal(19, 4)
 
-  saleOrder     SaleOrder @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
-  product       Product   @relation(fields: [productId], references: [id])
+  saleOrder SaleOrder @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
 
   @@index([saleOrderId])
   @@index([productId])
+  @@map("sale_order_lines")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum StockMovementType {
   PURCHASE_IN

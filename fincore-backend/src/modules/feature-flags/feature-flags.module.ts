@@ -1,33 +1,23 @@
 /**
  * src/modules/feature-flags/feature-flags.module.ts
  *
- * Feature Flags module.
- *
- * @Global — FeatureFlagsService is available in every module without
- * explicit import. FeatureFlagGuard is exported for use in controllers.
- *
- * Dependency resolution (no circular imports):
- *   FeatureFlagsModule imports SubscriptionsModule
- *   SubscriptionsModule does NOT import FeatureFlagsModule
- *
- * Sprint: S4 · Week 9–10
+ * FIX 17: @Global() REMOVED.
+ *   - The common FeatureFlagGuard (app-level) is already globally registered
+ *     via APP_GUARD in AppModule. Making this module @Global caused double
+ *     registration with a different guard class using a different decorator.
+ *   - FeatureFlagsService is exported for modules that need plan-level checks.
+ *   - The plan-level FeatureFlagGuard here is NOT globally registered —
+ *     add it explicitly with @UseGuards(FeatureFlagGuard) on premium routes.
  */
 
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { FeatureFlagsService } from './services/feature-flags.service';
 import { FeatureFlagGuard } from './guards/feature-flag.guard';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
-@Global()
 @Module({
-  imports: [SubscriptionsModule], // provides SubscriptionsService
+  imports: [SubscriptionsModule],
   providers: [FeatureFlagsService, FeatureFlagGuard],
   exports: [FeatureFlagsService, FeatureFlagGuard],
 })
 export class FeatureFlagsModule {}
-
-/*
- * Sprint S4 · Feature Flags Module · Week 9–10
- * @Global — FeatureFlagsService injected everywhere automatically.
- * Owned by: Billing team
- */

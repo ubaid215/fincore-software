@@ -1,4 +1,8 @@
 // src/health/health.controller.ts
+//
+// FIX: PrismaHealthIndicator.pingCheck() signature changed in @nestjs/terminus v10.
+//      Second argument is now the PrismaClient instance directly — no wrapper object.
+//
 import { Controller, Get } from '@nestjs/common';
 import {
   HealthCheck,
@@ -28,8 +32,9 @@ export class HealthController {
   @ApiOperation({ summary: 'Check API health — database, memory, disk' })
   check() {
     return this.health.check([
+      // FIX: pass prisma client directly as second arg (terminus v10 API)
       () => this.prismaIndicator.pingCheck('database', this.prisma),
-      () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024),
+      () => this.memory.checkHeap('memory_heap', 512 * 1024 * 1024), // 512 MB
       () =>
         this.disk.checkStorage('disk', {
           thresholdPercent: 0.9,

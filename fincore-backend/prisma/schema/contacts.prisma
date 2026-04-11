@@ -1,0 +1,127 @@
+// ============================================================
+// prisma/schema/contacts.prisma
+// Domain : Contacts (CRM-lite)
+// Covers : Unified contact record linked to every domain
+//          Supports: Customers · Vendors · Employees · Leads
+//          Banks · Internal contacts · Client portal users
+// ============================================================
+
+// ─────────────────────────────────────────────────────────────
+// CONTACT  — the universal "person or company" record
+// Replaces the thin Contact model in chart-of-accounts.prisma
+// and adds rich fields for CRM, portal, and multi-app linking.
+// ─────────────────────────────────────────────────────────────
+model Contact {
+  id              String      @id @default(uuid())
+  organizationId  String      @map("organization_id")
+
+  // ── Classification ───────────────────────────────────────
+  contactType     ContactType
+  code            String                                // auto-generated: "CUST-0001"
+  tags            String[]                              // free-form tags for filtering
+
+  // ── Identity ─────────────────────────────────────────────
+  displayName     String      @map("display_name")     // "Acme Corp" or "John Doe"
+  firstName       String?     @map("first_name")
+  lastName        String?     @map("last_name")
+  companyName     String?     @map("company_name")
+  jobTitle        String?     @map("job_title")
+  avatarUrl       String?     @map("avatar_url")
+
+  // ── Communication ────────────────────────────────────────
+  email           String?
+  email2          String?     @map("email_2")          // secondary email
+  phone           String?
+  phone2          String?     @map("phone_2")
+  whatsapp        String?
+  website         String?
+
+  // ── Address ──────────────────────────────────────────────
+  addressLine1    String?     @map("address_line_1")
+  addressLine2    String?     @map("address_line_2")
+  city            String?
+  state           String?
+  postalCode      String?     @map("postal_code")
+  country         String?     @default("PK")
+
+  // ── Finance / compliance ─────────────────────────────────
+  taxId           String?     @map("tax_id")           // NTN / GST / VAT number
+  currency        String?     @default("PKR")
+  creditLimit     Decimal?    @db.Decimal(19, 4) @map("credit_limit")
+  paymentTerms    Int?        @map("payment_terms")    // days: 0=immediate, 30, 60…
+  openingBalance  Decimal?    @db.Decimal(19, 4) @map("opening_balance")
+  bankName        String?     @map("bank_name")
+  bankAccount     String?     @map("bank_account")
+  bankIban        String?     @map("bank_iban")
+
+  // ── Client portal ────────────────────────────────────────
+  portalEnabled   Boolean     @default(false) @map("portal_enabled")
+  portalUserId    String?     @unique @map("portal_user_id")  // FK → User.id (CLIENT role)
+
+  // ── Status ───────────────────────────────────────────────
+  isActive        Boolean     @default(true) @map("is_active")
+  notes           String?
+
+  // ── Tracking ─────────────────────────────────────────────
+  createdById     String?     @map("created_by_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  deletedAt       DateTime?   @map("deleted_at")
+
+  // ── Relations — workspace ────────────────────────────────
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User?         @relation("ContactCreator", fields: [createdById], references: [id])
+
+  // ── Relations — invoicing ────────────────────────────────
+  customerInvoices  Invoice[]        @relation("CustomerInvoices")
+
+  // ── Relations — inventory ────────────────────────────────
+  purchaseOrders    PurchaseOrder[]  @relation("VendorPurchaseOrders")
+  saleOrders        SaleOrder[]      @relation("CustomerSaleOrders")
+
+  // ── Relations — calendar / appointments ──────────────────
+  appointments      Appointment[]    @relation("ContactAppointments")
+
+  // ── Relations — documents / sign ─────────────────────────
+  documentsReceived Document[]       @relation("DocumentRecipient")
+
+  @@unique([organizationId, code])
+  @@index([organizationId, contactType])
+  @@index([organizationId, email])
+  @@index([organizationId, isActive])
+  @@index([organizationId, deletedAt])
+  @@map("contacts")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CONTACT NOTE  — internal notes/timeline per contact
+// ─────────────────────────────────────────────────────────────
+model ContactNote {
+  id          String   @id @default(uuid())
+  contactId   String   @map("contact_id")
+  authorId    String   @map("author_id")             // User.id
+  body        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // No FK to User here intentionally — author may be deleted;
+  // store authorName as a snapshot for historical accuracy.
+  authorName  String   @map("author_name")
+
+  @@index([contactId])
+  @@map("contact_notes")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum ContactType {
+  CUSTOMER
+  VENDOR
+  BOTH          // acts as both customer and vendor
+  BANK
+  LEAD
+  PARTNER
+  INTERNAL      // internal departments as contacts
+}

@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
-import { Prisma, StockMovementType, PurchaseOrderStatus, SaleOrderStatus } from '@prisma/client';
+import { Prisma, StockMovementType } from '@prisma/client';
 import { CreateProductDto, UpdateProductDto, AdjustStockDto } from '../dto/inventory.dto';
 import { ProductWithStock, StockSummaryReport } from '../types/inventory.types';
 import { buildPaginatedResult } from '../../../common/utils/pagination.util';
@@ -17,6 +17,14 @@ type ProductRow = Prisma.ProductGetPayload<Record<string, never>>;
 
 // Prisma-generated type for a StockMovement row
 type StockMovementRow = Prisma.StockMovementGetPayload<Record<string, never>>;
+
+// Type for StockMovement with included relations
+type StockMovementWithRelations = Prisma.StockMovementGetPayload<{
+  include: {
+    product: { select: { code: true; name: true } };
+    createdBy: { select: { id: true; email: true; firstName: true; lastName: true } };
+  };
+}>;
 
 @Injectable()
 export class InventoryService {
@@ -35,8 +43,11 @@ export class InventoryService {
     }
 
     if (dto.barcode) {
-      const existingBarcode = await this.prisma.product.findUnique({
-        where: { organizationId_barcode: { organizationId, barcode: dto.barcode } },
+      const existingBarcode = await this.prisma.product.findFirst({
+        where: {
+          organizationId,
+          barcode: dto.barcode,
+        },
       });
       if (existingBarcode) {
         throw new ConflictException(`Product with barcode ${dto.barcode} already exists`);
@@ -110,7 +121,6 @@ export class InventoryService {
   ) {
     const { category, search, page = 1, limit = 20 } = options;
 
-    // FIX: Prisma.ProductWhereInput is available after `npx prisma generate` with inventory models
     const where: Prisma.ProductWhereInput = {
       organizationId,
       ...(category ? { category } : {}),
@@ -135,7 +145,6 @@ export class InventoryService {
       this.prisma.product.count({ where }),
     ]);
 
-    // FIX: explicit type on the map parameter — no implicit any
     const productsWithStock = data.map((p: ProductRow) => this.toProductWithStock(p));
     return buildPaginatedResult(productsWithStock, total, page, limit);
   }
@@ -204,7 +213,6 @@ export class InventoryService {
               remainingQty: dto.quantity,
               costPrice: dto.unitPrice ?? product.costPrice,
               purchaseDate: new Date(),
-              // FIX: dto.expiryDate now exists on AdjustStockDto — no more TS2339
               expiryDate: dto.expiryDate ? new Date(dto.expiryDate) : undefined,
             },
           });
@@ -223,7 +231,7 @@ export class InventoryService {
           referenceType: dto.referenceType,
           unitPrice: dto.unitPrice,
           notes: dto.notes,
-          createdBy: userId,
+          createdById: userId,
         },
       });
     });
@@ -241,7 +249,6 @@ export class InventoryService {
     page: number = 1,
     limit: number = 50,
   ) {
-    // FIX: Prisma.StockMovementWhereInput — available after prisma generate
     const where: Prisma.StockMovementWhereInput = {
       organizationId,
       ...(productId ? { productId } : {}),
@@ -252,7 +259,22 @@ export class InventoryService {
     const [data, total] = await Promise.all([
       this.prisma.stockMovement.findMany({
         where,
-        include: { product: { select: { code: true, name: true } } },
+        include: {
+          product: {
+            select: {
+              code: true,
+              name: true,
+            },
+          },
+          createdBy: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -260,20 +282,29 @@ export class InventoryService {
       this.prisma.stockMovement.count({ where }),
     ]);
 
-    // FIX: explicit typed parameter — no implicit any
-    const movements = data.map((m: typeof data[number]) => ({
-      id: m.id,
-      date: m.createdAt,
-      productCode: m.product.code,
-      productName: m.product.name,
-      movementType: m.movementType,
-      quantity: m.quantity,
-      reference: m.referenceId ?? '',
-      unitPrice: m.unitPrice?.toNumber() ?? null,
-      totalValue: (m.unitPrice?.toNumber() ?? 0) * m.quantity,
-      user: m.createdBy,
-      batchNumber: null,
-    }));
+    const movements = data.map((m: StockMovementWithRelations) => {
+      // Format user name from firstName and lastName
+      let userName = 'System';
+      if (m.createdBy) {
+        const fullName = `${m.createdBy.firstName || ''} ${m.createdBy.lastName || ''}`.trim();
+        userName = fullName || m.createdBy.email;
+      }
+
+      return {
+        id: m.id,
+        date: m.createdAt,
+        productCode: m.product.code,
+        productName: m.product.name,
+        movementType: m.movementType,
+        quantity: m.quantity,
+        reference: m.referenceId ?? '',
+        unitPrice: m.unitPrice?.toNumber() ?? null,
+        totalValue: (m.unitPrice?.toNumber() ?? 0) * m.quantity,
+        user: userName,
+        userId: m.createdById,
+        batchNumber: null,
+      };
+    });
 
     return buildPaginatedResult(movements, total, page, limit);
   }
@@ -305,7 +336,6 @@ export class InventoryService {
         minStockLevel: product.minStockLevel ?? 0,
         maxStockLevel: product.maxStockLevel ?? null,
         reorderStatus: this.getReorderStatus(product),
-        // FIX: costPrice is Decimal — call .toNumber() before multiplication
         stockValue: product.currentStock * product.costPrice.toNumber(),
         turnoverRate,
         daysInStock: turnoverRate > 0 ? 365 / turnoverRate : 0,
@@ -345,7 +375,6 @@ export class InventoryService {
           currentStock: product.currentStock,
           daysSinceLastSale,
           monthsOfStock,
-          // FIX: costPrice is Decimal — call .toNumber()
           estimatedValue: product.currentStock * product.costPrice.toNumber(),
           recommendedAction: this.getRecommendedAction(monthsOfStock, daysSinceLastSale),
         });
@@ -356,9 +385,6 @@ export class InventoryService {
   }
 
   async getReorderReport(organizationId: string): Promise<any[]> {
-    // FIX: prisma.product.fields.minStockLevel is a FieldRef, NOT a runtime number.
-    // It cannot be used as a filter value in a where clause. Use $queryRaw to compare
-    // two columns, or fetch and filter in JS. Raw SQL is the correct approach here.
     const products = await this.prisma.$queryRaw<ProductRow[]>`
       SELECT * FROM "Product"
       WHERE "organizationId" = ${organizationId}
@@ -391,7 +417,6 @@ export class InventoryService {
         reorderQuantity: product.reorderQuantity ?? 0,
         leadTimeDays,
         suggestedOrderQty: Math.ceil(suggestedOrderQty),
-        // FIX: costPrice from raw query is a plain number (not Decimal object)
         estimatedCost: Math.ceil(suggestedOrderQty) * Number(product.costPrice),
         preferredVendor: 'Default Supplier',
         urgency,
@@ -401,7 +426,6 @@ export class InventoryService {
 
   // ─── Private Helpers ──────────────────────────────────────────────────────
 
-  // FIX: typed parameter — no implicit any
   private toProductWithStock(product: ProductRow): ProductWithStock {
     return {
       ...product,
@@ -413,7 +437,6 @@ export class InventoryService {
     };
   }
 
-  // FIX: typed parameter — no implicit any
   private getReorderStatus(product: ProductRow): 'OK' | 'LOW' | 'OVERSTOCK' | 'CRITICAL' {
     if (product.currentStock <= 0) return 'CRITICAL';
     if (product.minStockLevel && product.currentStock <= product.minStockLevel) return 'LOW';
@@ -421,7 +444,6 @@ export class InventoryService {
     return 'OK';
   }
 
-  // FIX: typed parameter — no implicit any
   private calculateDailySales(movements: StockMovementRow[]): number {
     if (movements.length === 0) return 0;
     const totalSales = movements.reduce((sum, m) => sum + m.quantity, 0);

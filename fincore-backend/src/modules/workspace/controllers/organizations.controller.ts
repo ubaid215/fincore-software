@@ -1,4 +1,8 @@
 // src/modules/workspace/controllers/organizations.controller.ts
+//
+// FIX 16: Consolidated. WorkspaceModule's OrganizationsController is the
+//         canonical one. OrganizationsModule is now REMOVED from app.module.ts.
+//
 import {
   Controller,
   Get,
@@ -13,17 +17,21 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
+import { AppKey, UserRole } from '@prisma/client';
 import { OrganizationsService } from '../services/organizations.service';
-import { CreateOrganizationDto, UpdateOrganizationDto } from '../dto/create-organization.dto';
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+  UpdateMemberRoleDto,
+} from '../dto/create-organization.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
-import { OrgId } from '../../../common/decorators/organization.decorator';
+import { OrgId, RequireApp } from '../../../common/decorators/organization.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
-import { JwtPayload } from '../../../common/types/jwt-payload.type';
+import { OrgJwtPayload } from '../../../common/types/jwt-payload.type';
 
-@ApiTags('workspace')
+@ApiTags('workspace / organizations')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'organizations', version: '1' })
@@ -34,33 +42,33 @@ export class OrganizationsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new organization — creator becomes Owner' })
-  @ApiResponse({ status: 201, description: 'Organization created' })
+  @ApiOperation({ summary: 'Create a new organization — caller becomes OWNER' })
   @ApiResponse({ status: 409, description: 'Slug already taken' })
-  create(@CurrentUser() user: JwtPayload, @Body() dto: CreateOrganizationDto) {
+  create(@CurrentUser() user: OrgJwtPayload, @Body() dto: CreateOrganizationDto) {
     return this.orgsService.create(user.sub, dto);
   }
 
-  // ── My organizations ──────────────────────────────────────────────────────
+  // ── My orgs ───────────────────────────────────────────────────────────────
 
   @Get('my')
   @ApiOperation({ summary: 'List all organizations the current user belongs to' })
-  findMine(@CurrentUser() user: JwtPayload) {
+  findMine(@CurrentUser() user: OrgJwtPayload) {
     return this.orgsService.findAllForUser(user.sub);
   }
 
-  // ── Single org (requires membership via RolesGuard) ───────────────────────
+  // ── Single org ────────────────────────────────────────────────────────────
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get organization details + member list' })
-  @ApiParam({ name: 'id', description: 'Organization UUID' })
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Get organization details' })
   findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.orgsService.findOne(id);
   }
 
   @Patch(':id')
   @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Update organization settings — Admin or Owner only' })
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Update organization settings — Admin or Owner' })
   update(@OrgId() orgId: string, @Body() dto: UpdateOrganizationDto) {
     return this.orgsService.update(orgId, dto);
   }
@@ -68,33 +76,60 @@ export class OrganizationsController {
   // ── Members ───────────────────────────────────────────────────────────────
 
   @Get(':id/members')
-  @ApiOperation({ summary: 'List all members of an organization' })
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'List active members' })
   getMembers(@OrgId() orgId: string) {
     return this.orgsService.getMembers(orgId);
   }
 
   @Patch(':id/members/:userId/role')
   @Roles(UserRole.ADMIN)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'userId' })
   @ApiOperation({ summary: 'Change a member role — Admin or Owner only' })
-  @ApiParam({ name: 'userId', description: 'Target user UUID' })
   updateMemberRole(
     @OrgId() orgId: string,
     @Param('userId', ParseUUIDPipe) targetUserId: string,
-    @Body('role') newRole: UserRole,
-    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateMemberRoleDto,
+    @CurrentUser() user: OrgJwtPayload,
   ) {
-    return this.orgsService.updateMemberRole(orgId, targetUserId, newRole, user.sub);
+    return this.orgsService.updateMemberRole(orgId, targetUserId, dto.role, user.sub);
   }
 
   @Delete(':id/members/:userId')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Remove a member from the organization — Admin or Owner only' })
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'userId' })
+  @ApiOperation({ summary: 'Remove (soft-delete) a member' })
   removeMember(
     @OrgId() orgId: string,
     @Param('userId', ParseUUIDPipe) targetUserId: string,
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: OrgJwtPayload,
   ) {
     return this.orgsService.removeMember(orgId, targetUserId, user.sub);
+  }
+
+  // ── App access ────────────────────────────────────────────────────────────
+
+  @Get(':id/apps')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'List app access settings for this org' })
+  getAppAccess(@OrgId() orgId: string) {
+    return this.orgsService.getAppAccess(orgId);
+  }
+
+  @Patch(':id/apps/:app')
+  @Roles(UserRole.OWNER)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'app', enum: AppKey })
+  @ApiOperation({ summary: 'Enable or disable an app — Owner only' })
+  toggleApp(
+    @OrgId() orgId: string,
+    @Param('app') app: AppKey,
+    @Body('enable') enable: boolean,
+    @CurrentUser() user: OrgJwtPayload,
+  ) {
+    return this.orgsService.toggleApp(orgId, app, enable, user.sub);
   }
 }

@@ -107,7 +107,7 @@ export interface InvoiceForPdf {
     discount: Prisma.Decimal;
     total: Prisma.Decimal;
   }>;
-  organization: { name: string; email: string };
+  organization: { name: string; email: string | null };
 }
 
 // ─── Service ───────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export class InvoicePdfService {
 
     return {
       orgName: invoice.organization.name,
-      orgEmail: invoice.organization.email,
+      orgEmail: invoice.organization.email ?? '',
       invoiceNumber: invoice.invoiceNumber,
       status: invoice.status,
       clientName: invoice.clientName,

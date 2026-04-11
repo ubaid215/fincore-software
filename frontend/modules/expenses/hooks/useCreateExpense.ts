@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { expensesApi } from '../api/expenses.api'
 import { queryKeys } from '@/shared/lib/query-keys'
-import { toast } from '@/shared/ui/'
+import { toast } from '@/shared/hooks/useToast'
 
 export function useCreateExpense(orgId: string) {
   const queryClient = useQueryClient()
@@ -16,11 +16,11 @@ export function useCreateExpense(orgId: string) {
       queryClient.invalidateQueries({
         queryKey: queryKeys.expenses.all(orgId),
       })
-      toast.success('Expense created successfully')
-      router.push(`/dashboard/${orgId}/expenses/${expense.id}`)
+      toast({ description: 'Expense created successfully', variant: 'success' })
+      router.push(`/dashboard/${orgId}/expenses/${expense.id}` as never)
     },
     onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create expense')
+      toast({ description: error.message || 'Failed to create expense', variant: 'error' })
     },
   })
 }

@@ -1,34 +1,51 @@
+// ============================================================
 // prisma/schema/expenses.prisma
-// Domain: Expense Management
+// Domain : Expense Management
+// Covers : Expense claims · Lines · Receipts · Cost Centers
+// ============================================================
 
 model Expense {
   id             String        @id @default(uuid())
-  organizationId String  @map("organization_id")
-  claimantId     String  @map("claimant_id")
-  approverId     String?  @map("approver_id")
+  organizationId String        @map("organization_id")
+  claimantId     String        @map("claimant_id")
+  approverId     String?       @map("approver_id")
+  costCenterId   String?       @map("cost_center_id")
+
   title          String
   description    String?
-  totalAmount    Decimal       @db.Decimal(19, 4)  @map("total_amount")
+  category       String?                               // travel | meals | office | …
+  totalAmount    Decimal       @db.Decimal(19, 4) @map("total_amount")
   currency       String        @default("PKR")
+  exchangeRate   Decimal       @default(1) @db.Decimal(19, 6) @map("exchange_rate")
+
   status         ExpenseStatus @default(DRAFT)
-  submittedAt    DateTime?  @map("submitted_at")
-  approvedAt     DateTime?  @map("approved_at")
-  rejectedAt     DateTime?  @map("rejected_at")
-  rejectionNote  String?  @map("rejection_note")
-  postedToGLAt   DateTime?  @map("posted_to_gl_at")
-  costCenterId   String?  @map("cost_center_id")
-  createdAt      DateTime      @default(now())  @map("created_at")
-  updatedAt      DateTime      @updatedAt  @map("updated_at")
+  submittedAt    DateTime?     @map("submitted_at")
+  approvedAt     DateTime?     @map("approved_at")
+  rejectedAt     DateTime?     @map("rejected_at")
+  rejectionNote  String?       @map("rejection_note")
+  postedToGLAt   DateTime?     @map("posted_to_gl_at")
+
+  // ── Billable to client ────────────────────────────────────
+  isBillable     Boolean       @default(false) @map("is_billable")
+  contactId      String?       @map("contact_id")      // billed-to Contact
+  invoiceId      String?       @map("invoice_id")      // once billed, link invoice
+
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   claimant     User         @relation("ExpenseClaimer", fields: [claimantId], references: [id])
   approver     User?        @relation("ExpenseApprover", fields: [approverId], references: [id])
+  costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id])
   lines        ExpenseLine[]
   receipts     Receipt[]
-  costCenter   CostCenter? @relation(fields: [costCenterId], references: [id])
 
   @@index([organizationId, status])
   @@index([organizationId, claimantId])
+  @@index([organizationId, costCenterId])
+  @@index([contactId])
+  @@map("expenses")
 }
 
 model ExpenseLine {
@@ -37,49 +54,59 @@ model ExpenseLine {
   accountId   String  @map("account_id")
   description String
   amount      Decimal @db.Decimal(19, 4)
+  taxCode     String? @map("tax_code")
+  taxRate     Decimal @default(0) @db.Decimal(7, 4) @map("tax_rate")
   category    String
 
   expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id])
 
   @@index([expenseId])
+  @@map("expense_lines")
 }
 
 model Receipt {
   id        String   @id @default(uuid())
-  expenseId String  @map("expense_id")
-  fileName  String  @map("file_name")
-  s3Key     String
-  mimeType  String  @map("mime_type")
-  sizeBytes Int  @map("size_bytes")
-  createdAt DateTime @default(now())  @map("created_at")
+  expenseId String   @map("expense_id")
+  fileName  String   @map("file_name")
+  s3Key     String   @map("s3_key")
+  mimeType  String   @map("mime_type")
+  sizeBytes Int      @map("size_bytes")
+  createdAt DateTime @default(now()) @map("created_at")
 
   expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   @@index([expenseId])
+  @@map("receipts")
 }
 
 model CostCenter {
   id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
+  organizationId String   @map("organization_id")
   code           String
   name           String
   parentId       String?  @map("parent_id")
-  managerId      String?  @map("manager_id")
+  managerId      String?  @map("manager_id")         // User.id — manager of this center
   budget         Decimal  @db.Decimal(19, 4)
   actual         Decimal  @default(0) @db.Decimal(19, 4)
-  isActive       Boolean  @default(true)  @map("is_active")
-  createdAt      DateTime @default(now())  @map("created_at")
-  updatedAt      DateTime @updatedAt  @map("updated_at")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent       CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id])
-  children     CostCenter[] @relation("CostCenterHierarchy")
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent       CostCenter?   @relation("CostCenterHierarchy", fields: [parentId], references: [id])
+  children     CostCenter[]  @relation("CostCenterHierarchy")
   expenses     Expense[]
 
   @@unique([organizationId, code])
+  @@index([organizationId, isActive])
   @@index([organizationId, parentId])
+  @@map("cost_centers")
 }
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum ExpenseStatus {
   DRAFT

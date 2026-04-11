@@ -1,44 +1,72 @@
+// ============================================================
 // prisma/schema/bank-reconciliation.prisma
-// Domain: Bank Reconciliation
-// Owner:  Recon team
+// Domain : Bank Reconciliation
+// Covers : Bank Statements · Transactions · Auto-matching
+// ============================================================
 
 model BankStatement {
   id             String   @id @default(uuid())
-  organizationId String  @map("organization_id")
-  bankName       String  @map("bank_name")
-  accountNumber  String  @map("account_number")
+  organizationId String   @map("organization_id")
+  bankName       String   @map("bank_name")
+  accountNumber  String   @map("account_number")
+  accountTitle   String?  @map("account_title")
   currency       String   @default("PKR")
-  importedAt     DateTime @default(now())  @map("imported_at")
-  periodStart    DateTime  @map("period_start")
-  periodEnd      DateTime  @map("period_end")
-  s3Key          String
-  format         String   @default("CSV")
+  openingBalance Decimal? @db.Decimal(19, 4) @map("opening_balance")
+  closingBalance Decimal? @db.Decimal(19, 4) @map("closing_balance")
+  importedAt     DateTime @default(now()) @map("imported_at")
+  importedById   String?  @map("imported_by_id")
+  periodStart    DateTime @map("period_start")
+  periodEnd      DateTime @map("period_end")
+  s3Key          String   @map("s3_key")
+  format         String   @default("CSV")      // "CSV" | "OFX" | "MT940" | "XLSX"
+  rowCount       Int?     @map("row_count")
+  status         BankStatementStatus @default(IMPORTED)
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   transactions  BankTransaction[]
 
   @@index([organizationId])
   @@index([organizationId, periodStart, periodEnd])
+  @@map("bank_statements")
 }
 
 model BankTransaction {
   id              String      @id @default(uuid())
-  statementId     String  @map("statement_id")
+  statementId     String      @map("statement_id")
   date            DateTime
+  valueDate       DateTime?   @map("value_date")
   description     String
   reference       String?
   debit           Decimal     @default(0) @db.Decimal(19, 4)
   credit          Decimal     @default(0) @db.Decimal(19, 4)
   balance         Decimal?    @db.Decimal(19, 4)
   matchStatus     MatchStatus @default(UNMATCHED)
-  matchedEntryId  String?  @map("matched_entry_id")
-  matchConfidence String?  @map("match_confidence")
-  createdAt       DateTime    @default(now())  @map("created_at")
+
+  // ── Matched GL entry ─────────────────────────────────────
+  matchedEntryId  String?     @map("matched_entry_id")   // JournalEntry.id or Invoice.id
+  matchedType     String?     @map("matched_type")       // "JournalEntry" | "Invoice"
+  matchConfidence Decimal?    @db.Decimal(5, 2) @map("match_confidence")  // 0.00–100.00
+  matchedAt       DateTime?   @map("matched_at")
+  matchedById     String?     @map("matched_by_id")
+
+  createdAt       DateTime    @default(now()) @map("created_at")
 
   statement BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
 
   @@index([statementId])
   @@index([statementId, matchStatus])
+  @@index([matchedEntryId, matchedType])
+  @@map("bank_transactions")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum BankStatementStatus {
+  IMPORTED
+  RECONCILING
+  RECONCILED
 }
 
 enum MatchStatus {

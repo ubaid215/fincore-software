@@ -1,80 +1,63 @@
+// ============================================================
 // prisma/schema/chart-of-accounts.prisma
-// Domain: Chart of Accounts
+// Domain : Chart of Accounts & Fiscal Periods
+// Note   : Contact model moved to contacts.prisma
+// ============================================================
 
 model Account {
   id             String      @id @default(uuid())
-  organizationId String  @map("organization_id")
-  accountCode    String  @map("account_code")
+  organizationId String      @map("organization_id")
+  accountCode    String      @map("account_code")
   name           String
   type           AccountType
-  subType        String?  @map("sub_type")
-  parentId       String?  @map("parent_id")
-  isArchived     Boolean     @default(false)  @map("is_archived")
-  isLocked       Boolean     @default(false)  @map("is_locked")
+  subType        String?     @map("sub_type")
+  parentId       String?     @map("parent_id")
   description    String?
-  createdAt      DateTime    @default(now())  @map("created_at")
-  updatedAt      DateTime    @updatedAt  @map("updated_at")
+  isArchived     Boolean     @default(false) @map("is_archived")
+  isLocked       Boolean     @default(false) @map("is_locked")
+  currencyCode   String?     @map("currency_code")   // null = org default currency
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  parent       Account?     @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children     Account[]    @relation("AccountHierarchy")
-  journalLines JournalLine[]
-  expenseLines ExpenseLine[]
-  
-  // Inventory relations
-  productsSold     Product[] @relation("ProductSalesAccount")
-  productsCost     Product[] @relation("ProductCogsAccount")
-  productsInventory Product[] @relation("ProductInventoryAccount")
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent            Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children          Account[]     @relation("AccountHierarchy")
+  journalLines      JournalLine[]
+  expenseLines      ExpenseLine[]
+  productsSold      Product[]     @relation("ProductSalesAccount")
+  productsCost      Product[]     @relation("ProductCogsAccount")
+  productsInventory Product[]     @relation("ProductInventoryAccount")
 
   @@unique([organizationId, accountCode])
   @@index([organizationId, type])
+  @@index([organizationId, isArchived])
   @@index([organizationId, parentId])
+  @@map("accounts")
 }
 
 model FiscalPeriod {
   id             String       @id @default(uuid())
-  organizationId String  @map("organization_id")
+  organizationId String       @map("organization_id")
   name           String
-  startDate      DateTime  @map("start_date")
-  endDate        DateTime  @map("end_date")
+  startDate      DateTime     @map("start_date")
+  endDate        DateTime     @map("end_date")
   status         PeriodStatus @default(OPEN)
-  createdAt      DateTime     @default(now())  @map("created_at")
-  updatedAt      DateTime     @updatedAt  @map("updated_at")
+  closedAt       DateTime?    @map("closed_at")
+  closedById     String?      @map("closed_by_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
 
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   journalEntries JournalEntry[]
 
   @@index([organizationId, status])
   @@index([organizationId, startDate, endDate])
+  @@map("fiscal_periods")
 }
 
-model Contact {
-  id             String      @id @default(uuid())
-  organizationId String  @map("organization_id")
-  contactType    ContactType
-  code           String
-  name           String
-  email          String?
-  phone          String?
-  address        String?
-  taxId          String?  @map("tax_id")
-  openingBalance Decimal?    @db.Decimal(19, 4)  @map("opening_balance")
-  isActive       Boolean     @default(true)  @map("is_active")
-  createdAt      DateTime    @default(now())  @map("created_at")
-  updatedAt      DateTime    @updatedAt  @map("updated_at")
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
-  // Invoice relations
-  customerInvoices Invoice[] @relation("CustomerInvoices")
-  
-  // Purchase/Sale order relations
-  purchaseOrders PurchaseOrder[] @relation("VendorPurchaseOrders")
-  saleOrders     SaleOrder[]     @relation("CustomerSaleOrders")
-
-  @@unique([organizationId, code])
-  @@index([organizationId, contactType])
-}
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
 
 enum AccountType {
   ASSET
@@ -88,10 +71,4 @@ enum PeriodStatus {
   OPEN
   CLOSED
   LOCKED
-}
-
-enum ContactType {
-  CUSTOMER
-  VENDOR
-  BANK
 }

@@ -1,0 +1,231 @@
+// ============================================================
+// prisma/schema/apps.prisma
+// Domain : Platform Apps
+// Covers : Calendar · Appointments · Documents · Sign (e-sig)
+// Each section is one "app" toggled via OrgAppAccess.
+// ============================================================
+
+// ─────────────────────────────────────────────────────────────
+// ══ APP: CALENDAR ════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+
+model CalendarEvent {
+  id              String          @id @default(uuid())
+  organizationId  String          @map("organization_id")
+  organizerId     String          @map("organizer_id")    // User.id
+  title           String
+  description     String?
+  location        String?
+  startAt         DateTime        @map("start_at")
+  endAt           DateTime        @map("end_at")
+  allDay          Boolean         @default(false) @map("all_day")
+  isRecurring     Boolean         @default(false) @map("is_recurring")
+  recurrenceRule  String?         @map("recurrence_rule") // RFC 5545 RRULE
+  color           String?                                  // hex color for calendar UI
+  visibility      EventVisibility @default(TEAM)
+  status          EventStatus     @default(CONFIRMED)
+
+  // ── Optional links to other domain records ────────────────
+  contactId       String?         @map("contact_id")      // linked contact
+  resourceType    String?         @map("resource_type")   // "Invoice" | "SaleOrder" etc.
+  resourceId      String?         @map("resource_id")     // the linked record's PK
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizer       User            @relation("EventOrganizer", fields: [organizerId], references: [id])
+  attendees       EventAttendee[]
+
+  @@index([organizationId, startAt, endAt])
+  @@index([organizationId, organizerId])
+  @@index([contactId])
+  @@map("calendar_events")
+}
+
+model EventAttendee {
+  id        String          @id @default(uuid())
+  eventId   String          @map("event_id")
+  userId    String?         @map("user_id")      // internal user; null if external
+  email     String?                               // external attendee
+  name      String?
+  status    AttendeeStatus  @default(PENDING)
+
+  event     CalendarEvent   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User?           @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, email])
+  @@index([eventId])
+  @@map("event_attendees")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ══ APP: APPOINTMENTS ════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+
+model Appointment {
+  id              String              @id @default(uuid())
+  organizationId  String              @map("organization_id")
+  ownerId         String              @map("owner_id")         // User who runs appointments
+  contactId       String?             @map("contact_id")       // linked Contact
+  title           String
+  notes           String?
+  scheduledAt     DateTime            @map("scheduled_at")
+  durationMinutes Int                 @default(30) @map("duration_minutes")
+  location        String?
+  meetingUrl      String?             @map("meeting_url")      // Zoom/Meet link
+  status          AppointmentStatus   @default(SCHEDULED)
+  reminderSentAt  DateTime?           @map("reminder_sent_at")
+  cancelledAt     DateTime?           @map("cancelled_at")
+  cancelReason    String?             @map("cancel_reason")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner           User          @relation("AppointmentOwner", fields: [ownerId], references: [id])
+  contact         Contact?      @relation("ContactAppointments", fields: [contactId], references: [id])
+
+  @@index([organizationId, scheduledAt])
+  @@index([organizationId, ownerId])
+  @@index([contactId])
+  @@map("appointments")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ══ APP: DOCUMENTS ═══════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+
+model Document {
+  id              String          @id @default(uuid())
+  organizationId  String          @map("organization_id")
+  createdById     String          @map("created_by_id")
+  recipientId     String?         @map("recipient_id")     // Contact who receives it
+  title           String
+  description     String?
+  s3Key           String          @map("s3_key")           // raw file
+  mimeType        String          @map("mime_type")
+  sizeBytes       Int             @map("size_bytes")
+  version         Int             @default(1)
+  parentId        String?         @map("parent_id")        // for version history
+  folderId        String?         @map("folder_id")
+  status          DocumentStatus  @default(DRAFT)
+  tags            String[]
+  isTemplate      Boolean         @default(false) @map("is_template")
+
+  // ── Optional link to a domain record ─────────────────────
+  resourceType    String?         @map("resource_type")
+  resourceId      String?         @map("resource_id")
+
+  expiresAt       DateTime?       @map("expires_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy       User              @relation("DocumentCreator", fields: [createdById], references: [id])
+  recipient       Contact?          @relation("DocumentRecipient", fields: [recipientId], references: [id])
+  folder          DocumentFolder?   @relation(fields: [folderId], references: [id])
+  parent          Document?         @relation("DocumentVersions", fields: [parentId], references: [id])
+  versions        Document[]        @relation("DocumentVersions")
+  signatures      DocumentSignature[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, folderId])
+  @@index([organizationId, createdById])
+  @@index([resourceType, resourceId])
+  @@map("documents")
+}
+
+model DocumentFolder {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  name           String
+  parentId       String?  @map("parent_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  parent    DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id])
+  children  DocumentFolder[] @relation("FolderHierarchy")
+  documents Document[]
+
+  @@unique([organizationId, name, parentId])
+  @@index([organizationId])
+  @@map("document_folders")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ══ APP: SIGN (e-signature) ══════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+
+model DocumentSignature {
+  id           String          @id @default(uuid())
+  documentId   String          @map("document_id")
+  signerId     String?         @map("signer_id")       // internal User; null if external
+  signerEmail  String          @map("signer_email")    // always stored for audit
+  signerName   String          @map("signer_name")
+  order        Int             @default(1)              // signing order
+  status       SignatureStatus @default(PENDING)
+  token        String          @unique                  // secure link token for external signers
+  signedAt     DateTime?       @map("signed_at")
+  ipAddress    String?         @map("ip_address")
+  userAgent    String?         @map("user_agent")
+  signatureImageS3Key String?  @map("signature_image_s3_key")
+  declinedAt   DateTime?       @map("declined_at")
+  declineReason String?        @map("decline_reason")
+  reminderSentAt DateTime?     @map("reminder_sent_at")
+  expiresAt    DateTime?       @map("expires_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  document     Document   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  signer       User?      @relation(fields: [signerId], references: [id])
+
+  @@index([documentId])
+  @@index([token])
+  @@index([signerEmail])
+  @@map("document_signatures")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────
+
+enum EventVisibility {
+  PRIVATE    // only organizer
+  TEAM       // org members
+  PUBLIC     // external
+}
+
+enum EventStatus {
+  TENTATIVE
+  CONFIRMED
+  CANCELLED
+}
+
+enum AttendeeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  TENTATIVE
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum DocumentStatus {
+  DRAFT
+  PENDING_SIGNATURE
+  SIGNED
+  EXPIRED
+  VOIDED
+}
+
+enum SignatureStatus {
+  PENDING
+  SIGNED
+  DECLINED
+  EXPIRED
+}

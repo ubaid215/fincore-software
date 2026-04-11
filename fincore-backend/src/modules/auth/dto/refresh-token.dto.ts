@@ -3,16 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsNotEmpty } from 'class-validator';
 
 export class RefreshTokenDto {
-  @ApiProperty()
+  @ApiProperty({ description: 'Raw refresh token from prior login/refresh response' })
   @IsString()
   @IsNotEmpty()
   refreshToken!: string;
-}
-
-// src/modules/auth/dto/enable-mfa.dto.ts — inline here for brevity
-export class EnableMfaDto {
-  @ApiProperty({ example: '123456', description: '6-digit TOTP code from authenticator app' })
-  @IsString()
-  @IsNotEmpty()
-  code!: string;
 }

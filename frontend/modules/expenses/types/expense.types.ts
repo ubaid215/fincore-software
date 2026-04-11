@@ -65,16 +65,18 @@ export interface ExpenseApprovalHistory {
   createdAt: string
 }
 
-export interface CreateExpenseRequest {
-  category: string
+export interface CreateExpenseLineDto {
+  accountId: string
   description: string
-  expenseDate: string
   amount: number
-  taxRate: number
-  currency: string
-  notes?: string
-  receiptUrl?: string
-  lineItems?: Omit<ExpenseLineItem, 'id' | 'expenseId'>[]
+  category: string
+}
+
+export interface CreateExpenseRequest {
+  title: string
+  description?: string
+  currency?: string
+  lines: CreateExpenseLineDto[]
 }
 
 export interface UpdateExpenseStatusRequest {

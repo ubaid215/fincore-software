@@ -3,10 +3,13 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { NotificationsService } from './services/notifications.service';
+import { NotificationsGateway } from './gateway/notifications.gateway';
 import { EmailProcessor } from './processors/email.processor';
+import { AuthModule } from '../auth/auth.module'; // JwtService for socket auth
 
 @Module({
   imports: [
+    AuthModule, // provides JwtService for gateway token verification
     BullModule.registerQueueAsync({
       name: 'email',
       useFactory: (configService: ConfigService) => ({
@@ -25,7 +28,7 @@ import { EmailProcessor } from './processors/email.processor';
       inject: [ConfigService],
     }),
   ],
-  providers: [NotificationsService, EmailProcessor],
-  exports: [NotificationsService],
+  providers: [NotificationsService, NotificationsGateway, EmailProcessor],
+  exports: [NotificationsService, NotificationsGateway],
 })
 export class NotificationsModule {}

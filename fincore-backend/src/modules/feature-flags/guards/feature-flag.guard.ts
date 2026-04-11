@@ -1,21 +1,22 @@
 /**
  * src/modules/feature-flags/guards/feature-flag.guard.ts
  *
- * NestJS guard that enforces feature entitlements.
+ * FIX 13: Architecture clarification — two distinct guards, two distinct roles:
  *
- * Usage:
- *   @UseGuards(JwtAuthGuard, RolesGuard, FeatureFlagGuard)
- *   @RequiresFeature(FEATURES.INVOICING)
- *   @Get()
- *   listInvoices() { ... }
+ *   ┌─ src/common/guards/feature-flag.guard.ts  (@RequireApp)
+ *   │   → App-level access gate (JWT-based, zero DB hits)
+ *   │   → Reads OrgJwtPayload.apps[] from the access token
+ *   │   → Use for: routing users to correct app pages, API app-level protection
+ *   │   → Registered globally via APP_GUARD in AppModule
+ *   │
+ *   └─ THIS FILE  (@RequiresFeature — plan-level)
+ *       → Plan-level feature gate (Redis + DB, async)
+ *       → Calls FeatureFlagsService which checks OrgAppAccess + Plan.features[]
+ *       → Use for: premium features within an app (e.g. multi-currency, reports)
+ *       → Returns HTTP 402 Payment Required
+ *       → NOT registered globally — add explicitly: @UseGuards(FeatureFlagGuard)
  *
- * Returns HTTP 402 Payment Required when:
- *   - The organization has no subscription
- *   - The subscription is SUSPENDED or PAST_DUE
- *   - The feature is not included in the current plan
- *   - A global kill-switch has disabled the feature
- *
- * Sprint: S4 · Week 9–10
+ * Use @RequireApp for app-level gates. Use @RequiresFeature for plan-feature gates.
  */
 
 import {
@@ -28,22 +29,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { FeatureFlagsService } from '../services/feature-flags.service';
-import type { FeatureKey } from '../../../common/constants/features.constants';
+import type { AppKey } from '@prisma/client';
 
-/** Metadata key used to store the required feature on a route handler */
 export const FEATURE_KEY = 'requiredFeature';
-
-/**
- * Decorator — marks which feature a route requires.
- * Must be combined with FeatureFlagGuard.
- *
- * @example
- * @RequiresFeature(FEATURES.INVOICING)
- * @UseGuards(JwtAuthGuard, FeatureFlagGuard)
- * @Get()
- * listInvoices() {}
- */
-export const RequiresFeature = (feature: FeatureKey): MethodDecorator & ClassDecorator =>
+export const RequiresFeature = (feature: AppKey): MethodDecorator & ClassDecorator =>
   SetMetadata(FEATURE_KEY, feature);
 
 @Injectable()
@@ -54,12 +43,11 @@ export class FeatureFlagGuard implements CanActivate {
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
-    const requiredFeature = this.reflector.getAllAndOverride<FeatureKey | undefined>(FEATURE_KEY, [
+    const requiredFeature = this.reflector.getAllAndOverride<AppKey | undefined>(FEATURE_KEY, [
       ctx.getHandler(),
       ctx.getClass(),
     ]);
 
-    // No @RequiresFeature() — allow through unconditionally
     if (!requiredFeature) return true;
 
     const request = ctx.switchToHttp().getRequest<{
@@ -67,12 +55,11 @@ export class FeatureFlagGuard implements CanActivate {
     }>();
 
     const orgId = request.headers['x-organization-id'];
-
     if (!orgId) {
       throw new HttpException(
         {
           statusCode: HttpStatus.PAYMENT_REQUIRED,
-          message: 'X-Organization-Id header is required for feature-gated endpoints',
+          message: 'X-Organization-Id required',
           code: 'MISSING_ORG_HEADER',
         },
         HttpStatus.PAYMENT_REQUIRED,
@@ -80,19 +67,11 @@ export class FeatureFlagGuard implements CanActivate {
     }
 
     const result = await this.featureFlags.checkAccess(orgId, requiredFeature);
-
     if (!result.hasAccess) {
-      const reasonMessages: Record<string, string> = {
-        global_override: `Feature '${requiredFeature}' is currently disabled globally.`,
-        no_subscription: `Your organization does not have an active subscription. Subscribe to access '${requiredFeature}'.`,
-        entitlement: `Feature '${requiredFeature}' is not included in your current plan. Upgrade to enable it.`,
-      };
-
       throw new HttpException(
         {
           statusCode: HttpStatus.PAYMENT_REQUIRED,
-          message:
-            reasonMessages[result.source] ?? `Feature '${requiredFeature}' is not available.`,
+          message: `Feature '${requiredFeature}' is not available on your plan. Upgrade to unlock it.`,
           code: 'FEATURE_ACCESS_DENIED',
           feature: requiredFeature,
           source: result.source,
@@ -105,10 +84,3 @@ export class FeatureFlagGuard implements CanActivate {
     return true;
   }
 }
-
-/*
- * Sprint S4 · FeatureFlagGuard · Week 9–10
- * HTTP 402 on: no subscription, suspended, past-due, feature not in plan, global kill-switch
- * Decorator: @RequiresFeature(FEATURES.INVOICING)
- * Owned by: Billing team
- */

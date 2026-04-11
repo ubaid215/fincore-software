@@ -32,7 +32,7 @@ CREATE TYPE "SaleOrderStatus" AS ENUM ('DRAFT', 'CONFIRMED', 'PARTIALLY_SHIPPED'
 CREATE TYPE "InvoiceStatus" AS ENUM ('DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'VOID', 'DISPUTED');
 
 -- CreateEnum
-CREATE TYPE "ManualPaymentStatus" AS ENUM ('PENDING', 'CONFIRMED', 'REJECTED', 'EXPIRED');
+CREATE TYPE "ManualPaymentStatus" AS ENUM ('PENDING', 'SUBMITTED', 'CONFIRMED', 'REJECTED', 'EXPIRED');
 
 -- CreateEnum
 CREATE TYPE "SalaryStatus" AS ENUM ('PENDING', 'PROCESSED', 'PAID', 'CANCELLED');
@@ -49,7 +49,7 @@ CREATE TABLE "AuditLog" (
     "organization_id" TEXT NOT NULL,
     "user_id" TEXT,
     "action" TEXT NOT NULL,
-    "resourceType" TEXT NOT NULL,
+    "resource_type" TEXT NOT NULL,
     "resource_id" TEXT NOT NULL,
     "metadata" JSONB,
     "ip_address" TEXT,
@@ -68,6 +68,10 @@ CREATE TABLE "User" (
     "last_name" TEXT NOT NULL,
     "mfa_enabled" BOOLEAN NOT NULL DEFAULT false,
     "mfa_secret" TEXT,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "failed_login_attempts" INTEGER NOT NULL DEFAULT 0,
+    "locked_until" TIMESTAMP(3),
+    "last_login_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -79,6 +83,8 @@ CREATE TABLE "RefreshToken" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "token" TEXT NOT NULL,
+    "device_label" TEXT,
+    "ip_address" TEXT,
     "expires_at" TIMESTAMP(3) NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -95,6 +101,7 @@ CREATE TABLE "Invite" (
     "token" TEXT NOT NULL,
     "expires_at" TIMESTAMP(3) NOT NULL,
     "accepted_at" TIMESTAMP(3),
+    "revoked_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Invite_pkey" PRIMARY KEY ("id")
@@ -348,7 +355,7 @@ CREATE TABLE "StockMovement" (
     "reference_type" TEXT,
     "unit_price" DECIMAL(19,4),
     "notes" TEXT,
-    "created_by" TEXT NOT NULL,
+    "created_by_id" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "StockMovement_pkey" PRIMARY KEY ("id")
@@ -382,9 +389,9 @@ CREATE TABLE "PurchaseOrder" (
     "tax_amount" DECIMAL(19,4) NOT NULL DEFAULT 0,
     "total_amount" DECIMAL(19,4) NOT NULL,
     "notes" TEXT,
-    "approved_by" TEXT,
+    "approved_by_id" TEXT,
     "approved_at" TIMESTAMP(3),
-    "received_by" TEXT,
+    "received_by_id" TEXT,
     "received_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
@@ -421,9 +428,9 @@ CREATE TABLE "SaleOrder" (
     "tax_amount" DECIMAL(19,4) NOT NULL DEFAULT 0,
     "total_amount" DECIMAL(19,4) NOT NULL,
     "notes" TEXT,
-    "approved_by" TEXT,
+    "approved_by_id" TEXT,
     "approved_at" TIMESTAMP(3),
-    "shipped_by" TEXT,
+    "shipped_by_id" TEXT,
     "shipped_at" TIMESTAMP(3),
     "invoice_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -483,8 +490,8 @@ CREATE TABLE "invoice_line_items" (
     "quantity" DECIMAL(10,4) NOT NULL,
     "unit_price" DECIMAL(19,4) NOT NULL,
     "tax_code" TEXT,
-    "tax_rate" DECIMAL(5,4) NOT NULL DEFAULT 0,
-    "discount" DECIMAL(5,4) NOT NULL DEFAULT 0,
+    "tax_rate" DECIMAL(7,4) NOT NULL DEFAULT 0,
+    "discount" DECIMAL(7,4) NOT NULL DEFAULT 0,
     "total" DECIMAL(19,4) NOT NULL,
     "product_id" TEXT,
 
@@ -512,13 +519,15 @@ CREATE TABLE "ManualPayment" (
     "subscription_id" TEXT NOT NULL,
     "reference_code" TEXT NOT NULL,
     "proforma_s3_key" TEXT,
-    "amount" DECIMAL(10,2) NOT NULL,
+    "amount" DECIMAL(19,4) NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'PKR',
     "status" "ManualPaymentStatus" NOT NULL DEFAULT 'PENDING',
     "confirmed_by_admin_id" TEXT,
     "confirmed_at" TIMESTAMP(3),
     "rejection_note" TEXT,
     "expires_at" TIMESTAMP(3),
+    "submitted_proof_s3_key" TEXT,
+    "submitted_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -537,7 +546,7 @@ CREATE TABLE "Employee" (
     "department" TEXT,
     "designation" TEXT,
     "join_date" TIMESTAMP(3) NOT NULL,
-    "salary" DECIMAL(19,4) NOT NULL,
+    "base_salary" DECIMAL(19,4) NOT NULL,
     "bank_account" TEXT,
     "cnic" TEXT,
     "tax_number" TEXT,
@@ -572,14 +581,14 @@ CREATE TABLE "SalaryRecord" (
 CREATE TABLE "Plan" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
-    "displayName" TEXT NOT NULL,
-    "priceMonthly" DECIMAL(10,2) NOT NULL,
+    "display_name" TEXT NOT NULL,
+    "price_monthly" DECIMAL(10,2) NOT NULL,
     "currency" TEXT NOT NULL DEFAULT 'PKR',
-    "maxSeats" INTEGER NOT NULL,
+    "max_seats" INTEGER NOT NULL,
     "features" JSONB NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "is_active" BOOLEAN NOT NULL DEFAULT true,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Plan_pkey" PRIMARY KEY ("id")
 );
@@ -587,15 +596,16 @@ CREATE TABLE "Plan" (
 -- CreateTable
 CREATE TABLE "Subscription" (
     "id" TEXT NOT NULL,
-    "organizationId" TEXT NOT NULL,
-    "planId" TEXT NOT NULL,
+    "organization_id" TEXT NOT NULL,
+    "plan_id" TEXT NOT NULL,
     "status" "SubscriptionStatus" NOT NULL DEFAULT 'TRIALING',
-    "trialEndsAt" TIMESTAMP(3),
-    "currentPeriodStart" TIMESTAMP(3) NOT NULL,
-    "currentPeriodEnd" TIMESTAMP(3) NOT NULL,
-    "seatCount" INTEGER NOT NULL DEFAULT 1,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "trial_ends_at" TIMESTAMP(3),
+    "current_period_start" TIMESTAMP(3) NOT NULL,
+    "current_period_end" TIMESTAMP(3) NOT NULL,
+    "seat_count" INTEGER NOT NULL DEFAULT 1,
+    "canceled_at" TIMESTAMP(3),
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "Subscription_pkey" PRIMARY KEY ("id")
 );
@@ -605,9 +615,10 @@ CREATE TABLE "Organization" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
-    "email" TEXT NOT NULL,
+    "email" TEXT,
     "timezone" TEXT NOT NULL DEFAULT 'UTC',
     "currency" TEXT NOT NULL DEFAULT 'PKR',
+    "country" TEXT NOT NULL DEFAULT 'PK',
     "fiscal_year_end" INTEGER NOT NULL DEFAULT 12,
     "status" "OrgStatus" NOT NULL DEFAULT 'ACTIVE',
     "config" JSONB,
@@ -623,19 +634,23 @@ CREATE TABLE "UserOrganization" (
     "user_id" TEXT NOT NULL,
     "organization_id" TEXT NOT NULL,
     "role" "UserRole" NOT NULL DEFAULT 'VIEWER',
+    "is_default" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "UserOrganization_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateIndex
-CREATE INDEX "AuditLog_organization_id_resourceType_resource_id_idx" ON "AuditLog"("organization_id", "resourceType", "resource_id");
+CREATE INDEX "AuditLog_organization_id_resource_type_resource_id_idx" ON "AuditLog"("organization_id", "resource_type", "resource_id");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_organization_id_action_idx" ON "AuditLog"("organization_id", "action");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_organization_id_created_at_idx" ON "AuditLog"("organization_id", "created_at");
+
+-- CreateIndex
+CREATE INDEX "AuditLog_user_id_idx" ON "AuditLog"("user_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
@@ -657,6 +672,9 @@ CREATE INDEX "Invite_organization_id_idx" ON "Invite"("organization_id");
 
 -- CreateIndex
 CREATE INDEX "Invite_token_idx" ON "Invite"("token");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Invite_organization_id_email_key" ON "Invite"("organization_id", "email");
 
 -- CreateIndex
 CREATE INDEX "BankStatement_organization_id_idx" ON "BankStatement"("organization_id");
@@ -734,9 +752,6 @@ CREATE INDEX "Product_organization_id_is_active_idx" ON "Product"("organization_
 CREATE UNIQUE INDEX "Product_organization_id_code_key" ON "Product"("organization_id", "code");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Product_organization_id_barcode_key" ON "Product"("organization_id", "barcode");
-
--- CreateIndex
 CREATE INDEX "InventoryBatch_organization_id_product_id_expiry_date_idx" ON "InventoryBatch"("organization_id", "product_id", "expiry_date");
 
 -- CreateIndex
@@ -761,13 +776,10 @@ CREATE INDEX "StockSnapshot_organization_id_as_of_date_idx" ON "StockSnapshot"("
 CREATE UNIQUE INDEX "StockSnapshot_organization_id_product_id_as_of_date_key" ON "StockSnapshot"("organization_id", "product_id", "as_of_date");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "PurchaseOrder_po_number_key" ON "PurchaseOrder"("po_number");
-
--- CreateIndex
 CREATE INDEX "PurchaseOrder_organization_id_status_idx" ON "PurchaseOrder"("organization_id", "status");
 
 -- CreateIndex
-CREATE INDEX "PurchaseOrder_organization_id_po_number_idx" ON "PurchaseOrder"("organization_id", "po_number");
+CREATE UNIQUE INDEX "PurchaseOrder_organization_id_po_number_key" ON "PurchaseOrder"("organization_id", "po_number");
 
 -- CreateIndex
 CREATE INDEX "PurchaseOrderLine_purchase_order_id_idx" ON "PurchaseOrderLine"("purchase_order_id");
@@ -776,13 +788,10 @@ CREATE INDEX "PurchaseOrderLine_purchase_order_id_idx" ON "PurchaseOrderLine"("p
 CREATE INDEX "PurchaseOrderLine_product_id_idx" ON "PurchaseOrderLine"("product_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "SaleOrder_so_number_key" ON "SaleOrder"("so_number");
-
--- CreateIndex
 CREATE INDEX "SaleOrder_organization_id_status_idx" ON "SaleOrder"("organization_id", "status");
 
 -- CreateIndex
-CREATE INDEX "SaleOrder_organization_id_so_number_idx" ON "SaleOrder"("organization_id", "so_number");
+CREATE UNIQUE INDEX "SaleOrder_organization_id_so_number_key" ON "SaleOrder"("organization_id", "so_number");
 
 -- CreateIndex
 CREATE INDEX "SaleOrderLine_sale_order_id_idx" ON "SaleOrderLine"("sale_order_id");
@@ -827,6 +836,9 @@ CREATE INDEX "ManualPayment_subscription_id_idx" ON "ManualPayment"("subscriptio
 CREATE INDEX "ManualPayment_organization_id_idx" ON "ManualPayment"("organization_id");
 
 -- CreateIndex
+CREATE INDEX "ManualPayment_expires_at_status_idx" ON "ManualPayment"("expires_at", "status");
+
+-- CreateIndex
 CREATE INDEX "Employee_organization_id_is_active_idx" ON "Employee"("organization_id", "is_active");
 
 -- CreateIndex
@@ -845,10 +857,10 @@ CREATE UNIQUE INDEX "SalaryRecord_organization_id_employee_id_year_month_key" ON
 CREATE UNIQUE INDEX "Plan_name_key" ON "Plan"("name");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "Subscription_organizationId_key" ON "Subscription"("organizationId");
+CREATE UNIQUE INDEX "Subscription_organization_id_key" ON "Subscription"("organization_id");
 
 -- CreateIndex
-CREATE INDEX "Subscription_organizationId_idx" ON "Subscription"("organizationId");
+CREATE INDEX "Subscription_organization_id_idx" ON "Subscription"("organization_id");
 
 -- CreateIndex
 CREATE INDEX "Subscription_status_idx" ON "Subscription"("status");
@@ -864,6 +876,9 @@ CREATE UNIQUE INDEX "UserOrganization_user_id_organization_id_key" ON "UserOrgan
 
 -- AddForeignKey
 ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "AuditLog" ADD CONSTRAINT "AuditLog_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -959,6 +974,9 @@ ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_product_id_fkey" FOREI
 ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_batch_id_fkey" FOREIGN KEY ("batch_id") REFERENCES "InventoryBatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "StockMovement" ADD CONSTRAINT "StockMovement_created_by_id_fkey" FOREIGN KEY ("created_by_id") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "StockSnapshot" ADD CONSTRAINT "StockSnapshot_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -971,6 +989,12 @@ ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_organization_id_fkey" 
 ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "Contact"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_approved_by_id_fkey" FOREIGN KEY ("approved_by_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "PurchaseOrder" ADD CONSTRAINT "PurchaseOrder_received_by_id_fkey" FOREIGN KEY ("received_by_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "PurchaseOrderLine" ADD CONSTRAINT "PurchaseOrderLine_purchase_order_id_fkey" FOREIGN KEY ("purchase_order_id") REFERENCES "PurchaseOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
@@ -981,6 +1005,15 @@ ALTER TABLE "SaleOrder" ADD CONSTRAINT "SaleOrder_organization_id_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "SaleOrder" ADD CONSTRAINT "SaleOrder_customer_id_fkey" FOREIGN KEY ("customer_id") REFERENCES "Contact"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleOrder" ADD CONSTRAINT "SaleOrder_approved_by_id_fkey" FOREIGN KEY ("approved_by_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleOrder" ADD CONSTRAINT "SaleOrder_shipped_by_id_fkey" FOREIGN KEY ("shipped_by_id") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "SaleOrder" ADD CONSTRAINT "SaleOrder_invoice_id_fkey" FOREIGN KEY ("invoice_id") REFERENCES "invoices"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "SaleOrderLine" ADD CONSTRAINT "SaleOrderLine_sale_order_id_fkey" FOREIGN KEY ("sale_order_id") REFERENCES "SaleOrder"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -1022,10 +1055,13 @@ ALTER TABLE "SalaryRecord" ADD CONSTRAINT "SalaryRecord_organization_id_fkey" FO
 ALTER TABLE "SalaryRecord" ADD CONSTRAINT "SalaryRecord_employee_id_fkey" FOREIGN KEY ("employee_id") REFERENCES "Employee"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "SalaryRecord" ADD CONSTRAINT "SalaryRecord_journal_entry_id_fkey" FOREIGN KEY ("journal_entry_id") REFERENCES "JournalEntry"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_planId_fkey" FOREIGN KEY ("planId") REFERENCES "Plan"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Subscription" ADD CONSTRAINT "Subscription_plan_id_fkey" FOREIGN KEY ("plan_id") REFERENCES "Plan"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "UserOrganization" ADD CONSTRAINT "UserOrganization_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
