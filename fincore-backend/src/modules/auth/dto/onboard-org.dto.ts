@@ -11,7 +11,7 @@ import {
   MaxLength,
   IsEmail,
 } from 'class-validator';
-import { BusinessType } from '@prisma/client';
+import { AppKey, BusinessType } from '@prisma/client';
 
 /**
  * POST /auth/onboard-org  (authenticated — requires valid JwtPayload)
@@ -67,8 +67,12 @@ export class OnboardOrgDto {
   @MaxLength(50)
   industry?: string;
 
-  @ApiPropertyOptional({ example: 'INVOICING', description: 'AppKey — chosen app for free plan' })
+  @ApiPropertyOptional({
+    example: 'INVOICING',
+    description: 'AppKey — chosen app for free plan',
+    enum: AppKey,
+  })
   @IsOptional()
-  @IsString()
-  selectedApp?: string;
+  @IsEnum(AppKey)
+  selectedApp?: AppKey;
 }

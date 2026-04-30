@@ -1,45 +1,39 @@
-/**
- * src/modules/invoicing/invoicing.module.ts
- *
- * Invoicing feature module — Sprint S2.
- *
- * Registers:
- *  - InvoicesService     — 6-state lifecycle + payment recording
- *  - InvoicePdfService   — Puppeteer → S3 PDF generation
- *  - FxRateService       — Open Exchange Rates + Redis cache
- *  - PdfProcessor        — BullMQ job consumer (imported from JobsModule)
- *  - BullMQ queue        — 'invoice-pdf' queue backed by Redis
- *
- * Sprint: S2 · Week 5–6
- */
-
+// src/modules/invoicing/invoicing.module.ts
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { ConfigService } from '@nestjs/config';
+import { InvoicesController } from './controllers/invoices.controller';
 import { InvoicesService, PDF_QUEUE } from './services/invoices.service';
+import { InvoicesTrackingService } from './services/invoices-tracking.service';
 import { InvoicePdfService } from './services/invoice-pdf.service';
 import { FxRateService } from './services/fx-rate.service';
-import { InvoicesController } from './controllers/invoices.controller';
-import { PdfProcessor } from '../../jobs/processors/pdf.processor';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    // Register the invoice-pdf BullMQ queue — backed by the Redis connection
-    // configured in BullModule.forRootAsync() in AppModule
-    BullModule.registerQueue({ name: PDF_QUEUE }),
-  ],
-  providers: [
-    InvoicesService,
-    InvoicePdfService,
-    FxRateService,
-    PdfProcessor, // BullMQ processor — must be a provider in the same module
+    SubscriptionsModule,
+    NotificationsModule,
+    BullModule.registerQueueAsync({
+      name: PDF_QUEUE,
+      useFactory: (cfg: ConfigService) => ({
+        connection: {
+          host: cfg.get<string>('redis.host', 'localhost'),
+          port: cfg.get<number>('redis.port', 6379),
+          password: cfg.get<string>('redis.password'),
+        },
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+          removeOnComplete: { count: 50 },
+          removeOnFail: { count: 20 },
+        },
+      }),
+      inject: [ConfigService],
+    }),
   ],
   controllers: [InvoicesController],
-  exports: [InvoicesService, FxRateService],
+  providers: [InvoicesService, InvoicesTrackingService, InvoicePdfService, FxRateService],
+  exports: [InvoicesService, InvoicesTrackingService, FxRateService],
 })
 export class InvoicingModule {}
-
-/*
- * Sprint S2 · Invoicing Module · Week 5–6
- * Owned by: Invoicing team
- * Exports: InvoicesService (used by S6 FinancialReports), FxRateService (shared)
- */

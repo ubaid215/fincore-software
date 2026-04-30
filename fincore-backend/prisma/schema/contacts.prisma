@@ -84,6 +84,7 @@ model Contact {
 
   // ── Relations — documents / sign ─────────────────────────
   documentsReceived Document[]       @relation("DocumentRecipient")
+  attachments      ContactAttachment[]
 
   @@unique([organizationId, code])
   @@index([organizationId, contactType])
@@ -91,6 +92,26 @@ model Contact {
   @@index([organizationId, isActive])
   @@index([organizationId, deletedAt])
   @@map("contacts")
+}
+
+model ContactAttachment {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  contactId      String   @map("contact_id")
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  sizeBytes      Int      @map("size_bytes")
+  s3Key          String   @map("s3_key")
+  uploadedById   String   @map("uploaded_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id])
+
+  @@index([organizationId, contactId])
+  @@index([uploadedById])
+  @@map("contact_attachments")
 }
 
 // ─────────────────────────────────────────────────────────────

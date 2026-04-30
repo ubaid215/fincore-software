@@ -1,20 +1,4 @@
 // src/modules/auth/services/auth.service.ts
-//
-// Complete rewrite. Fixes vs original:
-//
-//  1. Refresh tokens stored as SHA-256 hash — raw token never in DB.
-//  2. register() sets status=UNVERIFIED, sends verification email — login blocked until verified.
-//  3. Magic link flow: send → verify (login + password-reset).
-//  4. Google OAuth: findOrCreate by googleId/email, auto-verifies email.
-//  5. UserStatus enum checked everywhere (not isActive boolean).
-//  6. MFA required for OWNER/ADMIN roles — enforced at login.
-//  7. select-org issues OrgJwtPayload embedding role/plan/apps — eliminates DB
-//     roundtrips in guards.
-//  8. Onboard-org creates tenant, links free plan, enables chosen app.
-//  9. Token rotation: old token deleted before new one issued (RT never reused).
-// 10. Email service injected via EmailService (Resend wrapper).
-// 11. mfaVerified claim embedded in org token for RolesGuard safety check.
-
 import {
   Injectable,
   UnauthorizedException,
@@ -46,6 +30,7 @@ import { MfaVerifyDto } from '../dto/mfa.dto';
 import { JwtPayload, OrgJwtPayload } from '../../../common/types/jwt-payload.type';
 import { MFA_REQUIRED_ROLES } from '../../../common/constants/roles.constants';
 import { EmailService } from './email.service';
+import { SessionPolicyService } from './session-policy.service';
 import { StringValue } from 'ms';
 import * as ms from 'ms';
 
@@ -104,6 +89,7 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private email: EmailService,
+    private sessionPolicy: SessionPolicyService,
   ) {
     this.bcryptRounds = this.config.get<number>('auth.bcryptRounds', 12);
     this.maxFailedAttempts = this.config.get<number>('auth.maxFailedAttempts', 5);
@@ -499,12 +485,12 @@ export class AuthService {
 
     // Expired — delete and reject
     if (stored.expiresAt < new Date() || stored.revokedAt) {
-      await this.prisma.refreshToken.delete({ where: { tokenHash } });
+      await this.prisma.refreshToken.deleteMany({ where: { tokenHash } });
       throw new UnauthorizedException('Refresh token expired — please log in again');
     }
 
     // Rotate: delete old before issuing new (prevents replay)
-    await this.prisma.refreshToken.delete({ where: { tokenHash } });
+    await this.prisma.refreshToken.deleteMany({ where: { tokenHash } });
 
     const user = await this.prisma.user.findUnique({
       where: { id: stored.userId },
@@ -528,6 +514,14 @@ export class AuthService {
   // ══════════════════════════════════════════════════════════════════════════
 
   async selectOrg(userId: string, dto: SelectOrgDto): Promise<OrgTokenResponse> {
+    // Fetch user to get isSuperAdmin flag
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, mfaEnabled: true, isSuperAdmin: true },
+    });
+
+    if (!user) throw new ForbiddenException('User not found');
+
     const membership = await this.prisma.userOrganization.findUnique({
       where: {
         userId_organizationId: { userId, organizationId: dto.organizationId },
@@ -539,12 +533,31 @@ export class AuthService {
             status: true,
             subscription: {
               select: {
-                plan: { select: { name: true } },
+                plan: {
+                  select: {
+                    name: true,
+                    features: true,   // plan-allowed app keys
+                    limits: {
+                      select: { maxUsers: true },
+                    },
+                  },
+                },
+                seatCount: true,
               },
             },
             appAccess: {
               where: { isEnabled: true },
               select: { app: true },
+            },
+            entitlementOverride: {
+              select: {
+                maxAppsOverride: true,
+                allowedAppsOverride: true,
+              },
+            },
+            members: {
+              where: { removedAt: null },
+              select: { id: true },
             },
           },
         },
@@ -554,34 +567,70 @@ export class AuthService {
     if (!membership) {
       throw new ForbiddenException('You are not a member of this organization');
     }
-    if (membership.organization.status !== OrgStatus.ACTIVE) {
+
+    // Super admin bypasses org status checks
+    if (!user.isSuperAdmin && membership.organization.status !== OrgStatus.ACTIVE) {
       throw new ForbiddenException(
         `Organization is ${membership.organization.status.toLowerCase()}. Contact support.`,
       );
     }
 
+    // ── Seat limit enforcement ─────────────────────────────────────────────
+    // OWNER and super-admin are always allowed; others are subject to maxUsers
+    if (!user.isSuperAdmin && membership.role !== UserRole.OWNER) {
+      const maxUsers = (await this.sessionPolicy.resolveMaxUsersForOrg(dto.organizationId)) ?? 1;
+      if (maxUsers !== -1) {
+        const currentMembers = membership.organization.members.length;
+        if (currentMembers > maxUsers) {
+          throw new ForbiddenException(
+            `Your organization has reached the maximum number of users for the ${membership.organization.subscription?.plan.name ?? 'current'} plan (${maxUsers}). ` +
+              `Contact your account owner to upgrade.`,
+          );
+        }
+      }
+    }
+
     const plan = membership.organization.subscription?.plan.name ?? 'FREE';
-    const apps = membership.organization.appAccess.map((a) => a.app as string);
+
+    // ── Plan-feature intersection ─────────────────────────────────────────
+    // apps[] = org-enabled apps ∩ plan-allowed features
+    // Super admin gets ALL enabled apps regardless of plan
+    const orgEnabledApps = membership.organization.appAccess.map((a) => a.app as string);
+    let apps: string[];
+
+    if (user.isSuperAdmin) {
+      apps = orgEnabledApps;
+    } else {
+      const planFeatures = (membership.organization.subscription?.plan.features as string[]) ?? [];
+      // Plan "ALL" wildcard means all features are available
+      if (planFeatures.includes('ALL')) {
+        apps = orgEnabledApps;
+      } else {
+        apps = orgEnabledApps.filter((a) => planFeatures.includes(a));
+      }
+    }
+
+    const allowedAppsOverride = membership.organization.entitlementOverride?.allowedAppsOverride ?? [];
+    if (allowedAppsOverride.length) {
+      apps = apps.filter((app) => allowedAppsOverride.includes(app as AppKey));
+    }
+
+    const maxAppsOverride = membership.organization.entitlementOverride?.maxAppsOverride;
+    if (maxAppsOverride && maxAppsOverride > 0) {
+      apps = apps.slice(0, maxAppsOverride);
+    }
 
     const orgPayload: OrgJwtPayload & { mfaVerified: boolean } = {
       sub: userId,
-      email: membership.userId, // resolved below
+      email: user.email,
       status: UserStatus.ACTIVE,
+      isSuperAdmin: user.isSuperAdmin,
       orgId: dto.organizationId,
       role: membership.role,
       plan,
       apps,
-      mfaVerified: MFA_REQUIRED_ROLES.includes(membership.role), // true = passed MFA at login
+      mfaVerified: !MFA_REQUIRED_ROLES.includes(membership.role) || user.mfaEnabled,
     };
-
-    // Fetch email for the payload (we need it for the token)
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { email: true, mfaEnabled: true },
-    });
-
-    orgPayload.email = user!.email;
-    orgPayload.mfaVerified = !MFA_REQUIRED_ROLES.includes(membership.role) || user!.mfaEnabled;
 
     const orgExpiresIn = this.config.get<string>('auth.jwtExpiresIn', '15m') as StringValue;
     const accessToken = this.jwt.sign(orgPayload, { expiresIn: orgExpiresIn });
@@ -618,7 +667,7 @@ export class AuthService {
     if (!freePlan) throw new BadRequestException('Free plan not configured. Contact support.');
 
     // Determine selected app — default to INVOICING for free plan
-    const selectedApp = (dto.selectedApp as AppKey) ?? AppKey.INVOICING;
+    const selectedApp = dto.selectedApp ?? AppKey.INVOICING;
 
     // Atomic: create org + subscription + membership + app access
     const org = await this.prisma.$transaction(async (tx) => {
@@ -748,6 +797,7 @@ export class AuthService {
       select: {
         role: true,
         isDefault: true,
+        joinedAt: true, // ← was missing
         organization: {
           select: {
             id: true,
@@ -757,6 +807,11 @@ export class AuthService {
             logoUrl: true,
             subscription: {
               select: { plan: { select: { name: true, displayName: true } } },
+            },
+            appAccess: {
+              // ← was missing entirely
+              where: { isEnabled: true },
+              select: { app: true },
             },
           },
         },
@@ -856,11 +911,19 @@ export class AuthService {
     email: string,
     deviceLabel?: string,
     mfaVerified?: boolean,
+    organizationId?: string,
   ): Promise<TokenPair> {
+    // Fetch isSuperAdmin to embed in every token (zero DB hits on auth checks)
+    const userRecord = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { isSuperAdmin: true },
+    });
+
     const payload: JwtPayload = {
       sub: userId,
       email,
       status: UserStatus.ACTIVE,
+      isSuperAdmin: userRecord?.isSuperAdmin ?? false,
     };
 
     const accessToken = this.jwt.sign(payload);
@@ -875,12 +938,14 @@ export class AuthService {
 
     // Cap active sessions per user — evict oldest first
     const count = await this.prisma.refreshToken.count({ where: { userId } });
+    const maxAllowed = await this.sessionPolicy.resolvePerUserLimit(userId, organizationId);
 
-    if (count >= this.maxRefreshTokens) {
+    const hardLimit = Math.min(this.maxRefreshTokens, maxAllowed);
+    if (count >= hardLimit) {
       const excess = await this.prisma.refreshToken.findMany({
         where: { userId },
         orderBy: { createdAt: 'asc' },
-        take: count - this.maxRefreshTokens + 1,
+        take: count - hardLimit + 1,
         select: { id: true },
       });
       await this.prisma.refreshToken.deleteMany({

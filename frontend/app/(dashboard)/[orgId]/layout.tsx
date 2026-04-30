@@ -12,7 +12,7 @@ import {
   CreditCard, BookOpen, Wallet,
 } from 'lucide-react';
 import { useAuth }           from '../../../hooks/useAuth';
-import { useAuthStore, useCurrentOrg, useOrgPayload } from '../../../stores/auth.store';
+import { useAuthStore, useCurrentOrg, useOrgPayload, useIsHydrated } from '../../../stores/auth.store';
 import type { AppKey }       from '../../../types/auth';
 
 // ── Nav item definition ────────────────────────────────────────────────────────
@@ -112,6 +112,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const user        = useAuthStore((s) => s.user);
   const memberships = useAuthStore((s) => s.memberships);
 
+  const isHydrated  = useIsHydrated();
+  const accessToken = useAuthStore((s) => s.accessToken);
+
   const [collapsed,    setCollapsed]    = useState(false);
   const [mobileOpen,   setMobileOpen]   = useState(false);
   const [notifCount,   setNotifCount]   = useState(0);
@@ -119,15 +122,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const orgApps = orgPayload?.apps ?? currentOrg?.organization.appAccess.map((a) => a.app) ?? [];
   const nav     = buildNav(orgId);
 
-  // Auto-select org when navigating directly to an orgId URL
+  // Auto-select org — wait for useInitSession to finish hydration first,
+  // otherwise selectOrg fires with no access token and triggers a
+  // 401 → BFF refresh race that corrupts fincore_refresh.
   useEffect(() => {
+    if (!isHydrated) return;
+    if (!accessToken) return; // logging out — let logout() handle navigation
     if (!orgPayload || orgPayload.orgId !== orgId) {
       selectOrg(orgId).catch(() => {
         toast.error('You do not have access to this organization');
         router.push('/select');
       });
     }
-  }, [orgId]);
+  }, [orgId, isHydrated, accessToken]);
 
   const handleLogout = async () => {
     await logout();

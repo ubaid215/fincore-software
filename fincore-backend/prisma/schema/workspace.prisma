@@ -51,6 +51,7 @@ model Organization {
 
   // ── Workspace domain ──────────────────────────────────────
   appAccess        OrgAppAccess[]        // which apps this org can use
+  entitlementOverride OrgEntitlementOverride?
   customFields     CustomFieldDef[]      // owner-defined extra fields per model
   whiteLabelConfig WhiteLabelConfig?     // branding for client portal
 
@@ -81,6 +82,7 @@ model Organization {
 
   // ── Contact domain ───────────────────────────────────────
   contacts         Contact[]
+  contactAttachments ContactAttachment[]
   costCenters      CostCenter[]
 
   // ── Calendar / Appointments / Documents / Sign ───────────
@@ -218,6 +220,7 @@ model PlanLimit {
   id             String   @id @default(uuid())
   planId         String   @unique @map("plan_id")
   maxUsers       Int      @default(1) @map("max_users")
+  maxConcurrentSessionsPerUser Int @default(2) @map("max_concurrent_sessions_per_user")
   maxOrgs        Int      @default(1) @map("max_orgs")
   maxInvoices    Int      @default(50) @map("max_invoices")  // per month; -1 = unlimited
   maxContacts    Int      @default(100) @map("max_contacts")
@@ -229,6 +232,26 @@ model PlanLimit {
   plan Plan @relation(fields: [planId], references: [id])
 
   @@map("plan_limits")
+}
+
+model OrgEntitlementOverride {
+  id             String   @id @default(uuid())
+  organizationId String   @unique @map("organization_id")
+  maxUsersOverride Int?   @map("max_users_override")
+  maxConcurrentSessionsOverride Int? @map("max_concurrent_sessions_override")
+  maxAppsOverride Int?    @map("max_apps_override")
+  allowedAppsOverride AppKey[] @default([])
+  reason         String?
+  updatedById    String   @map("updated_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  updatedBy    User         @relation(fields: [updatedById], references: [id])
+
+  @@index([organizationId])
+  @@index([updatedById])
+  @@map("org_entitlement_overrides")
 }
 
 // ─────────────────────────────────────────────────────────────

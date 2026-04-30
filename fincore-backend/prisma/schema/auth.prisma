@@ -40,6 +40,11 @@ model User {
   lastLoginAt         DateTime?   @map("last_login_at")
   lastLoginIp         String?     @map("last_login_ip")
 
+  // ── Platform-level super admin ───────────────────────────
+  // CEO / platform owner: bypasses ALL plan, role, and app restrictions.
+  // Set this flag manually via a seed or DB admin for the CEO account.
+  isSuperAdmin        Boolean     @default(false) @map("is_super_admin")
+
   // ── Soft-delete / deactivation ───────────────────────────
   isActive            Boolean     @default(true) @map("is_active")
   deletedAt           DateTime?   @map("deleted_at")           // soft-delete; keeps audit trail intact
@@ -55,6 +60,7 @@ model User {
 
   // ── Relations — Workspace domain ─────────────────────────
   organizations       UserOrganization[]
+  entitlementOverridesUpdated OrgEntitlementOverride[]
   invitesSent         Invite[]            @relation("InviteSender")
 
   // ── Relations — Expense domain ───────────────────────────
@@ -73,6 +79,7 @@ model User {
 
   // ── Relations — Contact domain ───────────────────────────
   contactsCreated     Contact[]           @relation("ContactCreator")
+  contactAttachmentsUploaded ContactAttachment[]
 
   // ── Relations — Audit domain ─────────────────────────────
   auditLogs           AuditLog[]          @relation("UserAuditLogs")

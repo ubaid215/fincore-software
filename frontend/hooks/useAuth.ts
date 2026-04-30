@@ -11,6 +11,43 @@ import type {
   OnboardOrgPayload,
 } from '../types/auth';
 
+// ── Persist refresh token as HttpOnly cookie via Next.js BFF ─────────────────
+// The DashboardAuthGuard and middleware both read `fincore_refresh` to decide
+// whether the user has an active session.  We call this after every login-style
+// event so the cookie is always in sync with the access token in memory.
+async function persistRefreshCookie(refreshToken: string): Promise<void> {
+  try {
+    const res = await fetch('/api/auth/set-refresh-token', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) {
+      console.warn('set-refresh-token responded', res.status);
+    }
+  } catch (err) {
+    console.warn('Failed to persist refresh cookie:', err);
+  }
+}
+
+// ── Restore org context from localStorage after page reload ──────────────────
+const ORG_KEY = 'fincore:activeOrgId';
+
+function getSavedOrgId(): string | null {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(ORG_KEY);
+}
+
+function saveOrgId(orgId: string): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(ORG_KEY, orgId);
+}
+
+function clearSavedOrgId(): void {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(ORG_KEY);
+}
+
 export function useAuth() {
   const router      = useRouter();
   const store       = useAuthStore();
@@ -20,24 +57,52 @@ export function useAuth() {
   } = store;
 
   // ── Hydration — called once on app boot from AuthProvider ────────────────
+  // Restores the session from the HttpOnly refresh cookie, then re-selects
+  // the previously active org so the org-scoped token is fully populated.
 
   const hydrate = useCallback(async (): Promise<void> => {
     setLoading(true);
     try {
-      // Try to restore access token from HttpOnly refresh cookie
-      const tokens = await authApi.refresh();
-      setAccessToken(tokens.accessToken);
+      // 1. Exchange fincore_refresh cookie for a new access token via BFF proxy.
+      //    The BFF reads fincore_refresh (port 3000 domain) and rotates it,
+      //    so all future 401-interceptor refreshes find a valid cookie.
+      const refreshRes = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!refreshRes.ok) throw new Error('Session expired');
+      const refreshData = await refreshRes.json();
+      const newAccessToken = refreshData.accessToken;
+      if (!newAccessToken) throw new Error('No access token in refresh response');
+      setAccessToken(newAccessToken);
 
-      // Load user profile + org list
+      // 3. Load user profile + org list in parallel
       const [user, memberships] = await Promise.all([
         authApi.getMe(),
         authApi.getOrganizations(),
       ]);
       setUser(user);
       setMemberships(memberships);
+
+      if (memberships.length === 0) return; // no org yet — stays on bare token
+
+      // 4. Restore org-scoped token — prefer saved orgId, fallback to default/first
+      const savedOrgId = getSavedOrgId();
+      const targetOrg =
+        (savedOrgId && memberships.find((m) => m.organization.id === savedOrgId)) ??
+        memberships.find((m) => m.isDefault) ??
+        memberships[0];
+
+      if (targetOrg) {
+        const orgId = targetOrg.organization.id;
+        const { accessToken: orgToken } = await authApi.selectOrg(orgId);
+        setOrgToken(orgToken, orgId);
+        saveOrgId(orgId);
+      }
     } catch {
       // No valid refresh cookie — user is logged out
       clearAuth();
+      clearSavedOrgId();
     } finally {
       setLoading(false);
       useAuthStore.getState().setHydrated(true);
@@ -53,8 +118,7 @@ export function useAuth() {
     lastName:  string;
     phone?:    string;
   }): Promise<{ userId: string; message: string }> => {
-    const result = await authApi.register(payload);
-    return result;
+    return authApi.register(payload);
   }, []);
 
   // ── Login ─────────────────────────────────────────────────────────────────
@@ -66,11 +130,9 @@ export function useAuth() {
     deviceLabel?: string;
   }): Promise<LoginResponse> => {
     const result = await authApi.login(payload);
-    console.log('raw api result:', result);
     if (isMfaRequired(result)) {
       return result;   // caller shows MFA form
     }
-
     await _handleTokenPair(result as TokenPair);
     return result;
   }, []);
@@ -104,10 +166,10 @@ export function useAuth() {
 
   const onboardOrg = useCallback(async (payload: OnboardOrgPayload): Promise<string> => {
     const { accessToken } = await authApi.onboardOrg(payload);
-    // The returned token is already org-scoped — extract orgId from it
     const { jwtDecode } = await import('jwt-decode');
     const decoded = jwtDecode<{ orgId: string }>(accessToken);
     setOrgToken(accessToken, decoded.orgId);
+    saveOrgId(decoded.orgId);
     return decoded.orgId;
   }, []);
 
@@ -116,45 +178,58 @@ export function useAuth() {
   const selectOrg = useCallback(async (orgId: string): Promise<void> => {
     const { accessToken } = await authApi.selectOrg(orgId);
     setOrgToken(accessToken, orgId);
+    saveOrgId(orgId);
   }, []);
 
   // ── Logout ────────────────────────────────────────────────────────────────
 
   const logout = useCallback(async (): Promise<void> => {
-    try {
-      await authApi.logoutAll();
-    } catch { /* best effort */ }
+    // Revoke all server sessions — best effort, must not block cookie clear
+    try { await authApi.logoutAll(); } catch { /* ignore */ }
+    // Always clear the HttpOnly cookie regardless of logoutAll result
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch { /* ignore */ }
     clearAuth();
-    router.push('/login');
-  }, [router]);
+    clearSavedOrgId();
+    // Hard navigation: bypasses React Router so no useEffect fires after clearAuth()
+    // (prevents [orgId]/layout.tsx from detecting orgPayload===null and redirecting to /select)
+    window.location.href = '/login';
+  }, []);
 
   // ── Private: handle token pair ────────────────────────────────────────────
+  // Called after every successful login-type event. Stores access token,
+  // persists refresh token as HttpOnly cookie, loads user/org, then navigates.
 
-const _handleTokenPair = async (tokens: TokenPair) => {
-  console.log('_handleTokenPair called', tokens.accessToken?.slice(0, 20));
-  setAccessToken(tokens.accessToken);
-  try {
-    const [user, memberships] = await Promise.all([
-      authApi.getMe(),
-      authApi.getOrganizations(),
-    ]);
-    console.log('user', user, 'memberships', memberships);
-    setUser(user);
-    setMemberships(memberships);
+  const _handleTokenPair = async (tokens: TokenPair & { refreshToken?: string }) => {
+    setAccessToken(tokens.accessToken);
 
-    if (memberships.length === 0) {
-      router.push('/onboarding');
-    } else if (memberships.length === 1) {
-      const orgId = memberships[0].organization.id;
-      await selectOrg(orgId);
-      router.push(`/${orgId}`);
-    } else {
-      router.push('/select');
+    // Persist refresh token so DashboardAuthGuard sees the session on reload
+    if ((tokens as any).refreshToken) {
+      await persistRefreshCookie((tokens as any).refreshToken);
     }
-  } catch (e) {
-    console.error('_handleTokenPair failed', e);
-  }
-};
+
+    try {
+      const [user, memberships] = await Promise.all([
+        authApi.getMe(),
+        authApi.getOrganizations(),
+      ]);
+      setUser(user);
+      setMemberships(memberships);
+
+      if (memberships.length === 0) {
+        router.push('/onboarding');
+      } else if (memberships.length === 1) {
+        const orgId = memberships[0].organization.id;
+        const { accessToken: orgToken } = await authApi.selectOrg(orgId);
+        setOrgToken(orgToken, orgId);
+        saveOrgId(orgId);
+        router.push(`/${orgId}`);
+      } else {
+        router.push('/select');
+      }
+    } catch (e) {
+      console.error('_handleTokenPair failed', e);
+    }
+  };
 
   return {
     // State

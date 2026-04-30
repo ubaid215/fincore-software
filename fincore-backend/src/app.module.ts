@@ -56,6 +56,7 @@ import { GlobalRedisModule } from './modules/redis/redis.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
 import { CalendarModule } from './modules/calendar/calendar.module';
 import { AppointmentsModule } from './modules/appointments/appointments.module';
+import { PlatformAdminModule } from './modules/platform-admin/platform-admin.module';
 // FIX 16: OrganizationsModule REMOVED — WorkspaceModule is canonical
 
 @Module({
@@ -149,6 +150,7 @@ import { AppointmentsModule } from './modules/appointments/appointments.module';
     ContactsModule,
     CalendarModule,
     AppointmentsModule,
+    PlatformAdminModule,
   ],
 
   providers: [

@@ -56,6 +56,12 @@ export const contactsApi = {
   getFieldDefs: (orgId: string) =>
     apiGet<CustomFieldDef[]>('/contacts/custom-fields/definitions', { headers: { 'X-Organization-Id': orgId } }),
 
+  createFieldDef: (orgId: string, data: {
+    fieldKey: string; label: string; fieldType: string;
+    isRequired?: boolean; sortOrder?: number; options?: unknown[];
+  }) =>
+    apiPost<CustomFieldDef>('/contacts/custom-fields/definitions', data, { headers: { 'X-Organization-Id': orgId } }),
+
   setFieldValues: (orgId: string, id: string, fields: { fieldDefId: string; value?: string }[]) =>
     apiPatch<CustomFieldValue[]>(`/contacts/${id}/custom-fields`, fields, { headers: { 'X-Organization-Id': orgId } }),
 };

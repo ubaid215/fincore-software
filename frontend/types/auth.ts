@@ -3,8 +3,7 @@
 // ── API response shapes ───────────────────────────────────────────────────────
 
 export interface TokenPair {
-  accessToken:  string;
-  refreshToken: string;
+  accessToken: string;
 }
 
 export interface OrgTokenResponse {
@@ -71,18 +70,19 @@ export interface OrgMembership {
 // ── JWT payload shapes (decoded) ──────────────────────────────────────────────
 
 export interface JwtPayload {
-  sub:    string;
-  email:  string;
-  status: UserStatus;
-  iat?:   number;
-  exp?:   number;
+  sub:         string;
+  email:       string;
+  status:      UserStatus;
+  isSuperAdmin: boolean;   // CEO/platform-owner — bypasses all plan/role/app restrictions
+  iat?:        number;
+  exp?:        number;
 }
 
 export interface OrgJwtPayload extends JwtPayload {
   orgId:       string;
   role:        UserRole;
   plan:        string;
-  apps:        string[];
+  apps:        string[];   // plan-intersected org-enabled apps
   mfaVerified: boolean;
 }
 

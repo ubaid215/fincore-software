@@ -1,19 +1,4 @@
 // src/modules/auth/controllers/auth.controller.ts
-//
-// Complete rewrite. Added vs original:
-//  - POST /auth/verify-email
-//  - POST /auth/resend-verification
-//  - POST /auth/forgot-password
-//  - POST /auth/reset-password
-//  - POST /auth/magic-link/send
-//  - POST /auth/magic-link/verify
-//  - POST /auth/mfa/verify       (step-up after requiresMfa response)
-//  - GET  /auth/google
-//  - GET  /auth/google/callback
-//  - POST /auth/select-org       (bare → org-scoped token)
-//  - POST /auth/onboard-org      (step 2 of registration)
-//  - GET  /auth/sessions         (active session list)
-//  - DELETE /auth/sessions/:id   (revoke specific session)
 
 import {
   Controller,
@@ -27,15 +12,15 @@ import {
   UseGuards,
   Req,
   Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
 
-import { AuthService } from '../services/auth.service';
+import { AuthService, TokenPair } from '../services/auth.service';
 import { RegisterDto } from '../dto/register.dto';
 import { LoginDto } from '../dto/login.dto';
-import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { ForgotPasswordDto } from '../dto/forgot-password.dto';
 import { ResetPasswordDto } from '../dto/reset-password.dto';
 import { VerifyEmailDto } from '../dto/verify-email.dto';
@@ -43,6 +28,7 @@ import { SendMagicLinkDto, VerifyMagicLinkDto } from '../dto/magic-link.dto';
 import { MfaCodeDto, MfaVerifyDto } from '../dto/mfa.dto';
 import { SelectOrgDto } from '../dto/select-org.dto';
 import { OnboardOrgDto } from '../dto/onboard-org.dto';
+import { RefreshTokenDto } from '../dto/refresh-token.dto';
 
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { Public } from '../../../common/decorators/public.decorator';
@@ -50,6 +36,18 @@ import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { JwtPayload } from '../../../common/types/jwt-payload.type';
 import { GoogleUser } from '../strategies/google.strategy';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
+
+// ── Cookie options helper ─────────────────────────────────────────────────────
+function refreshCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+}
 
 @ApiTags('auth')
 @UseGuards(JwtAuthGuard)
@@ -66,6 +64,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Step 1 — Register account. Sends email verification link.' })
   @ApiResponse({ status: 201, description: '{ message, userId }' })
@@ -83,12 +82,16 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify email from link. Returns token pair on success.' })
   @ApiResponse({ status: 400, description: 'Invalid/expired/used token' })
-  verifyEmail(@Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(dto.token);
+  async verifyEmail(@Body() dto: VerifyEmailDto, @Res({ passthrough: true }) res: Response) {
+    const tokens = await this.authService.verifyEmail(dto.token);
+    res.cookie('refresh_token', tokens.refreshToken, refreshCookieOptions());
+    // Return both tokens — frontend proxy needs refreshToken to set fincore_refresh cookie
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   @Post('resend-verification')
   @ApiBearerAuth()
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend verification email (authenticated, for UNVERIFIED users)' })
   async resendVerification(@CurrentUser() user: JwtPayload) {
@@ -104,16 +107,21 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Login with email + password',
-    description:
-      'Returns TokenPair on success, or { requiresMfa: true, userId } when 2FA is needed.',
-  })
-  @ApiResponse({ status: 200, description: 'Token pair or requiresMfa signal' })
-  @ApiResponse({ status: 401, description: 'Invalid credentials' })
-  @ApiResponse({ status: 403, description: 'Locked / unverified / suspended' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @ApiOperation({ summary: 'Login with email + password. Sets refresh_token HttpOnly cookie.' })
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {
+    const result = await this.authService.login(dto);
+
+    // If MFA required, no cookie yet — just return the signal
+    if ('requiresMfa' in result && result.requiresMfa) {
+      return result;
+    }
+
+    const tokens = result as TokenPair;
+    res.cookie('refresh_token', tokens.refreshToken, refreshCookieOptions());
+
+    // Return both tokens — client needs refreshToken to store as fincore_refresh cookie
+    // (via POST /api/auth/set-refresh-token Next.js BFF route)
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -124,8 +132,10 @@ export class AuthController {
   @Post('mfa/verify')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Complete MFA step-up after password login. Returns token pair.' })
-  verifyMfaLogin(@Body() dto: MfaVerifyDto) {
-    return this.authService.verifyMfaLogin(dto);
+  async verifyMfaLogin(@Body() dto: MfaVerifyDto, @Res({ passthrough: true }) res: Response) {
+    const tokens = await this.authService.verifyMfaLogin(dto);
+    res.cookie('refresh_token', tokens.refreshToken, refreshCookieOptions());
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -145,28 +155,18 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   @ApiOperation({ summary: 'Google OAuth callback — issues JWT pair, redirects to frontend' })
   async googleCallback(@Req() req: Request, @Res() res: Response) {
-    // FIX: req.user is typed as JwtPayload | OrgJwtPayload | undefined by the
-    // JwtAuthGuard applied at the class level. On this specific route, Passport's
-    // GoogleStrategy populates req.user with a GoogleUser object. The types don't
-    // overlap enough for a direct cast (TS2352). Cast through `unknown` first —
-    // this is correct because at runtime Passport guarantees GoogleUser here.
     const googleUser = req.user as unknown as GoogleUser;
     const { accessToken, refreshToken, isNewUser } =
       await this.authService.loginWithGoogle(googleUser);
 
     const frontendUrl = this.config.get<string>('auth.frontendUrl', 'http://localhost:3000');
 
-    res.cookie('refresh_token', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/api/v1/auth/refresh',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie('refresh_token', refreshToken, refreshCookieOptions());
 
+    // Pass both tokens in query params so frontend can store fincore_refresh
     const redirectUrl = isNewUser
-      ? `${frontendUrl}/onboarding?access_token=${accessToken}`
-      : `${frontendUrl}/dashboard?access_token=${accessToken}`;
+      ? `${frontendUrl}/onboarding?access_token=${accessToken}&refresh_token=${refreshToken}`
+      : `${frontendUrl}/select?access_token=${accessToken}&refresh_token=${refreshToken}`;
 
     return res.redirect(redirectUrl);
   }
@@ -177,6 +177,7 @@ export class AuthController {
 
   @Public()
   @Post('magic-link/send')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send passwordless magic-link email' })
   sendMagicLink(@Body() dto: SendMagicLinkDto) {
@@ -188,8 +189,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Exchange magic-link token for JWT pair' })
   @ApiResponse({ status: 401, description: 'Invalid/expired/used token' })
-  verifyMagicLink(@Body() dto: VerifyMagicLinkDto) {
-    return this.authService.verifyMagicLink(dto.token);
+  async verifyMagicLink(
+    @Body() dto: VerifyMagicLinkDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.authService.verifyMagicLink(dto.token);
+    res.cookie('refresh_token', tokens.refreshToken, refreshCookieOptions());
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -198,6 +204,7 @@ export class AuthController {
 
   @Public()
   @Post('forgot-password')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Send password-reset email (always returns same response)' })
   forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -220,18 +227,37 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rotate refresh token — returns new token pair' })
-  @ApiResponse({ status: 401, description: 'Token invalid, expired, or revoked' })
-  refresh(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshTokens(dto.refreshToken);
+  @ApiOperation({ summary: 'Rotate refresh token. Accepts from HttpOnly cookie OR request body.' })
+  async refresh(
+    @Req() req: Request,
+    @Body() body: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    // Accept from HttpOnly cookie (direct browser call) OR body (Next.js BFF proxy call)
+    const rawToken = req.cookies?.['refresh_token'] ?? body?.refreshToken;
+    if (!rawToken) {
+      throw new UnauthorizedException('No refresh token');
+    }
+
+    const tokens = await this.authService.refreshTokens(rawToken);
+
+    // Rotate the cookie for direct browser calls
+    res.cookie('refresh_token', tokens.refreshToken, refreshCookieOptions());
+
+    // Return both tokens so the Next.js proxy can rotate fincore_refresh cookie too
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Invalidate one refresh token (single session logout)' })
-  logout(@Body() dto: RefreshTokenDto) {
-    return this.authService.logout(dto.refreshToken);
+  async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const rawToken = req.cookies?.['refresh_token'];
+    if (rawToken) {
+      await this.authService.logout(rawToken);
+    }
+    res.clearCookie('refresh_token', { path: '/' });
+    return { message: 'Logged out successfully' };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -256,7 +282,8 @@ export class AuthController {
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Revoke all sessions (all refresh tokens) for current user' })
-  logoutAll(@CurrentUser() user: JwtPayload) {
+  logoutAll(@CurrentUser() user: JwtPayload, @Res({ passthrough: true }) res: Response) {
+    res.clearCookie('refresh_token', { path: '/' });
     return this.authService.logoutAll(user.sub);
   }
 

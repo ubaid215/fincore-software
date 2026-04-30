@@ -1,8 +1,4 @@
 // src/stores/auth.store.ts
-//
-// ACCESS TOKEN → memory only (never localStorage/sessionStorage/cookie)
-// REFRESH TOKEN → HttpOnly cookie (server-set, JS cannot read)
-// On app boot → call authApi.refresh() to restore access token from cookie
 
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';

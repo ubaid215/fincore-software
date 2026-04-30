@@ -1,15 +1,7 @@
 // src/common/guards/roles.guard.ts
 //
-// FIX (was): Did a DB query (userOrganization.findUnique) on EVERY authenticated
-//            request to fetch the user's role — expensive on high-traffic routes.
-//
-// NOW: Role, orgId, plan, and apps are embedded in the OrgJwtPayload (JWT claims).
-//      This guard reads them directly from request.user — zero DB hits on hot path.
-//      The token has a 15-min TTL; role changes take effect on next token refresh.
-//      For immediate revocation (e.g. remove member): call logoutAll → forces re-login.
-//
-//      FALLBACK: If the route is hit with a bare JwtPayload (no org context),
-//      the guard falls through to the org-scoped token flow check.
+// Reads role/orgId/plan claims directly from the OrgJwtPayload (zero DB hits).
+// Super-admin (isSuperAdmin: true) bypasses all role and MFA requirements.
 //
 import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -38,6 +30,9 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('No authentication context');
     }
 
+    // CEO / platform-owner bypasses all role restrictions
+    if (user.isSuperAdmin) return true;
+
     // Route requires role-check → must have org-scoped token
     if (!isOrgPayload(user)) {
       throw new ForbiddenException('Org-scoped token required. POST /auth/select-org first.');
@@ -54,11 +49,8 @@ export class RolesGuard implements CanActivate {
     }
 
     // Enforce 2FA requirement for elevated roles (OWNER, ADMIN)
-    // The MFA check happens at login; this is a belt-and-suspenders safeguard
-    // in case the token was issued through a non-standard path.
     if (MFA_REQUIRED_ROLES.includes(user.role)) {
-      // mfaVerified is set by AuthService.login() when MFA code was validated
-      if (!(user as any).mfaVerified) {
+      if (!user.mfaVerified) {
         throw new ForbiddenException(
           `Role '${user.role}' requires MFA verification. Please login with your 2FA code.`,
         );

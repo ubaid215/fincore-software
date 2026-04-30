@@ -197,9 +197,14 @@ export default function SelectOrgPage() {
 
           <button
             onClick={logout}
-            className="w-full h-9 flex items-center justify-center gap-2 rounded-lg
-                       text-sm font-medium transition-all"
-            style={{ color: 'var(--color-text-tertiary)' }}
+            className="w-full h-10 flex items-center justify-center gap-2 rounded-lg border
+                       text-sm font-medium transition-all hover:border-[--color-error]
+                       active:scale-[0.99]"
+            style={{
+              background:  'var(--color-white)',
+              borderColor: 'var(--color-border)',
+              color:       'var(--color-error, #dc2626)',
+            }}
           >
             <LogOut className="w-4 h-4" />
             Sign out

@@ -10,13 +10,7 @@ import { PrismaService } from '../../../database/prisma.service';
 import { SubscriptionsService } from '../../subscriptions/services/subscriptions.service';
 import { NotificationsService } from '../../notifications/services/notifications.service';
 import { ContactType, Prisma, NotificationType } from '@prisma/client';
-import {
-  CreateContactDto,
-  UpdateContactDto,
-  QueryContactDto,
-  CreateContactNoteDto,
-  SetCustomFieldDto,
-} from '../dto/contact.dto';
+import { CreateContactDto, UpdateContactDto, QueryContactDto, SetCustomFieldDto } from '../dto/contact.dto';
 // FIX: `@prisma/client/runtime/library` is an internal Prisma path removed in Prisma 5.
 // Import Decimal from the standalone decimal.js package instead — it is the same
 // class that Prisma uses internally and is already a transitive dependency.
@@ -159,6 +153,45 @@ export class ContactsService {
     };
   }
 
+  async picker(
+    organizationId: string,
+    search?: string,
+    contactType?: ContactType,
+    limit: number = 20,
+  ) {
+    return this.prisma.contact.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+        isActive: true,
+        ...(contactType ? { contactType: { in: [contactType, ContactType.BOTH] } } : {}),
+        ...(search
+          ? {
+              OR: [
+                { displayName: { contains: search, mode: 'insensitive' } },
+                { companyName: { contains: search, mode: 'insensitive' } },
+                { code: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { phone: { contains: search, mode: 'insensitive' } },
+                { taxId: { contains: search, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        code: true,
+        contactType: true,
+        displayName: true,
+        companyName: true,
+        email: true,
+        phone: true,
+      },
+      orderBy: { displayName: 'asc' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+  }
+
   async findOne(organizationId: string, id: string) {
     // FIX: `notes` is not a relation in ContactInclude — it is a scalar text
     // field on the Contact model itself. The `include` block only accepts
@@ -185,10 +218,15 @@ export class ContactsService {
       take: 50,
     });
 
+    const attachments = await this.prisma.contactAttachment.findMany({
+      where: { organizationId, contactId: id },
+      orderBy: { createdAt: 'desc' },
+    });
+
     // Attach smart button counts (Odoo-style)
     const summary = await this.getSmartButtonCounts(organizationId, id);
 
-    return { ...contact, contactNotes, customFields: customValues, summary };
+    return { ...contact, contactNotes, attachments, customFields: customValues, summary };
   }
 
   /** Smart button counts — mirrors the Odoo header badges */
@@ -300,6 +338,13 @@ export class ContactsService {
       sortOrder?: number;
     },
   ) {
+    if (
+      (dto.fieldType === 'SELECT' || dto.fieldType === 'MULTI_SELECT') &&
+      (!dto.options || dto.options.length === 0)
+    ) {
+      throw new BadRequestException('SELECT and MULTI_SELECT custom fields require options');
+    }
+
     const existing = await this.prisma.customFieldDef.findUnique({
       where: {
         organizationId_targetModel_fieldKey: {
@@ -320,7 +365,7 @@ export class ContactsService {
         fieldType: dto.fieldType as any,
         isRequired: dto.isRequired ?? false,
         defaultValue: dto.defaultValue,
-        options: dto.options ? JSON.stringify(dto.options) : undefined,
+        options: dto.options,
         sortOrder: dto.sortOrder ?? 0,
       },
     });
@@ -354,6 +399,34 @@ export class ContactsService {
     fields: SetCustomFieldDto[],
   ) {
     return Promise.all(fields.map((f) => this.setCustomFieldValue(organizationId, contactId, f)));
+  }
+
+  async addAttachment(
+    organizationId: string,
+    contactId: string,
+    uploadedById: string,
+    input: { fileName: string; mimeType: string; sizeBytes: number; s3Key: string },
+  ) {
+    await this.findOne(organizationId, contactId);
+    return this.prisma.contactAttachment.create({
+      data: { organizationId, contactId, uploadedById, ...input },
+    });
+  }
+
+  async listAttachments(organizationId: string, contactId: string) {
+    await this.findOne(organizationId, contactId);
+    return this.prisma.contactAttachment.findMany({
+      where: { organizationId, contactId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async removeAttachment(organizationId: string, contactId: string, attachmentId: string) {
+    await this.findOne(organizationId, contactId);
+    await this.prisma.contactAttachment.deleteMany({
+      where: { id: attachmentId, organizationId, contactId },
+    });
+    return { deleted: true };
   }
 
   // ══════════════════════════════════════════════════════════════════════════

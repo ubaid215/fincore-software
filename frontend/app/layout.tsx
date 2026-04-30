@@ -2,7 +2,6 @@
 import type { Metadata, Viewport } from 'next';
 import { DM_Sans, DM_Mono }       from 'next/font/google';
 import { Toaster }                 from 'sonner';
-import { AuthProvider }            from '../components/layout/AuthProvider';
 import './globals.css';
 
 const dmSans = DM_Sans({
@@ -36,9 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <AuthProvider>
-          {children}
-        </AuthProvider>
+        {children}
         <Toaster
           position="top-right"
           toastOptions={{

@@ -56,6 +56,7 @@ async function main() {
       emailVerifiedAt: new Date(),
       mfaEnabled: true, // OWNER must use 2FA
       isActive: true,
+      isSuperAdmin: true, // CEO/platform-owner — bypasses ALL plan/role/app restrictions
     },
   });
 

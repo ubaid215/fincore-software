@@ -323,6 +323,23 @@ export class QueryContactDto {
   limit?: number;
 }
 
+export class ContactPickerQueryDto {
+  @ApiPropertyOptional({ example: 'akbar' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ enum: ContactType })
+  @IsOptional()
+  @IsEnum(ContactType)
+  contactType?: ContactType;
+
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @IsOptional()
+  @Type(() => Number)
+  limit?: number;
+}
+
 // ─── Contact Note ─────────────────────────────────────────────────────────────
 
 export class CreateContactNoteDto {
@@ -352,6 +369,24 @@ export class EnablePortalDto {
   @ApiProperty({ description: 'User ID to link as CLIENT portal user' })
   @IsString()
   userId!: string;
+}
+
+export class AddContactAttachmentDto {
+  @ApiProperty()
+  @IsString()
+  fileName!: string;
+
+  @ApiProperty()
+  @IsString()
+  mimeType!: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  sizeBytes!: number;
+
+  @ApiProperty()
+  @IsString()
+  s3Key!: string;
 }
 
 // ─── Smart button summary shape ───────────────────────────────────────────────

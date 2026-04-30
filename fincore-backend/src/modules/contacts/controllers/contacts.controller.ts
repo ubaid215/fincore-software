@@ -23,10 +23,11 @@ import {
   CreateContactNoteDto,
   SetCustomFieldDto,
   EnablePortalDto,
+  AddContactAttachmentDto,
+  ContactPickerQueryDto,
 } from '../dto/contact.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../../common/guards/roles.guard';
-import { FeatureFlagGuard, RequiresFeature } from '../../feature-flags/guards/feature-flag.guard';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { OrgId, RequireApp } from '../../../common/decorators/organization.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
@@ -62,6 +63,12 @@ export class ContactsController {
   @ApiOperation({ summary: 'List contacts — search, filter by type, tag, active status' })
   findAll(@OrgId() orgId: string, @Query() query: QueryContactDto) {
     return this.contactsService.findAll(orgId, query);
+  }
+
+  @Get('picker/search')
+  @ApiOperation({ summary: 'Fast contact search endpoint for customer/vendor pickers' })
+  picker(@OrgId() orgId: string, @Query() query: ContactPickerQueryDto) {
+    return this.contactsService.picker(orgId, query.search, query.contactType, query.limit);
   }
 
   @Get(':id')
@@ -200,5 +207,38 @@ export class ContactsController {
   @ApiOperation({ summary: 'Disable client portal for this contact' })
   disablePortal(@OrgId() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
     return this.contactsService.disablePortal(orgId, id);
+  }
+
+  @Post(':id/attachments')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'Attach file metadata to a contact' })
+  addAttachment(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: OrgJwtPayload,
+    @Body() dto: AddContactAttachmentDto,
+  ) {
+    return this.contactsService.addAttachment(orgId, id, user.sub, dto);
+  }
+
+  @Get(':id/attachments')
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: 'List contact attachments' })
+  listAttachments(@OrgId() orgId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.contactsService.listAttachments(orgId, id);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @HttpCode(HttpStatus.OK)
+  @ApiParam({ name: 'id' })
+  @ApiParam({ name: 'attachmentId' })
+  @ApiOperation({ summary: 'Remove one attachment from a contact' })
+  removeAttachment(
+    @OrgId() orgId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('attachmentId', ParseUUIDPipe) attachmentId: string,
+  ) {
+    return this.contactsService.removeAttachment(orgId, id, attachmentId);
   }
 }

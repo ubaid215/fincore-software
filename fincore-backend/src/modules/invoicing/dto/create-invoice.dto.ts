@@ -1,11 +1,14 @@
 /**
  * src/modules/invoicing/dto/create-invoice.dto.ts
  *
- * Request body validation for the Invoicing module.
- * All monetary fields are validated as positive numbers — Decimal.js
- * conversion happens in the service layer, never in the DTO.
- *
- * Sprint: S2 · Week 5–6
+ * FIXES:
+ *  17. customerId field added (FK to Contact)
+ *  18. purchaseOrder field added (client's PO reference)
+ *  19. terms field added (payment terms text)
+ *  20. exchangeRate field added
+ *  21. RecurringPeriod enum aligned with schema: WEEKLY|BIWEEKLY|MONTHLY|QUARTERLY|ANNUALLY
+ *  22. QueryInvoicesDto — customerId filter added
+ *  23. QueryInvoicesDto — VIEWED and OVERDUE added to status enum
  */
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -19,6 +22,7 @@ import {
   IsNumber,
   IsBoolean,
   IsEnum,
+  IsUUID,
   IsPositive,
   Min,
   Max,
@@ -29,28 +33,33 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import type { InvoiceStatus } from '@prisma/client';
+import { InvoiceStatus, RecurringPeriod } from '@prisma/client';
 
-// ─── Line item DTO ─────────────────────────────────────────────────────────
+// ─── Line item ─────────────────────────────────────────────────────────────
 
 export class CreateInvoiceLineItemDto {
+  @ApiPropertyOptional({ description: 'Product UUID — auto-fills description and price' })
+  @IsOptional()
+  @IsUUID()
+  productId?: string;
+
   @ApiProperty({ example: 'Software Development — March 2025' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(500)
   description!: string;
 
-  @ApiProperty({ example: 40, description: 'Number of units (hours, items, etc.)' })
+  @ApiProperty({ example: 40 })
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @IsPositive()
   quantity!: number;
 
-  @ApiProperty({ example: 5000, description: 'Price per unit in invoice currency (PKR default)' })
+  @ApiProperty({ example: 5000 })
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @Min(0)
   unitPrice!: number;
 
-  @ApiPropertyOptional({ example: 'GST17', description: 'Tax code identifier for reporting' })
+  @ApiPropertyOptional({ example: 'GST17' })
   @IsOptional()
   @IsString()
   @MaxLength(20)
@@ -58,7 +67,7 @@ export class CreateInvoiceLineItemDto {
 
   @ApiPropertyOptional({
     example: 0.17,
-    description: 'Tax rate as a decimal (0.17 = 17% GST). Applied to line total after discount.',
+    description: 'Tax rate as decimal (0.17 = 17%)',
     default: 0,
   })
   @IsOptional()
@@ -69,7 +78,7 @@ export class CreateInvoiceLineItemDto {
 
   @ApiPropertyOptional({
     example: 0.05,
-    description: 'Discount rate as a decimal (0.05 = 5%). Applied before tax.',
+    description: 'Discount rate as decimal (0.05 = 5%)',
     default: 0,
   })
   @IsOptional()
@@ -77,11 +86,25 @@ export class CreateInvoiceLineItemDto {
   @Min(0)
   @Max(1)
   discount?: number;
+
+  @ApiPropertyOptional({ example: 0, description: 'Display order within invoice' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  sortOrder?: number;
 }
 
 // ─── Create invoice ────────────────────────────────────────────────────────
 
 export class CreateInvoiceDto {
+  // FIX 17: customerId — links invoice to a Contact record
+  @ApiPropertyOptional({ description: 'Contact UUID — links this invoice to a contact record' })
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  // Client snapshot fields (always stored even when customerId is provided,
+  // so the invoice remains accurate if the Contact is later edited)
   @ApiProperty({ example: 'ACME Corporation' })
   @IsString()
   @IsNotEmpty()
@@ -99,72 +122,100 @@ export class CreateInvoiceDto {
   @MaxLength(500)
   clientAddress?: string;
 
-  @ApiProperty({ example: '2025-06-01', description: 'ISO 8601 date the invoice is issued' })
+  @ApiPropertyOptional({ example: '1234567-8', description: 'Client NTN / GST / VAT number' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  clientTaxId?: string;
+
+  // FIX 18: purchaseOrder — client's PO reference number
+  @ApiPropertyOptional({
+    example: 'PO-2025-0042',
+    description: "Client's purchase order reference",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  purchaseOrder?: string;
+
+  @ApiProperty({ example: '2025-06-01' })
   @IsDateString()
   issueDate!: string;
 
-  @ApiPropertyOptional({ example: '2025-06-30', description: 'Payment due date (optional)' })
+  @ApiPropertyOptional({ example: '2025-06-30' })
   @IsOptional()
   @IsDateString()
   dueDate?: string;
 
-  @ApiPropertyOptional({
-    example: 'PKR',
-    default: 'PKR',
-    description: 'ISO 4217 currency code. Use PKR for local, USD/EUR for international.',
-  })
+  @ApiPropertyOptional({ example: 'PKR', default: 'PKR' })
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(3)
   currency?: string;
 
+  // FIX 20: exchangeRate field
+  @ApiPropertyOptional({
+    example: 278.5,
+    description: 'Exchange rate to org base currency (PKR). Default 1 for PKR invoices.',
+  })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @IsPositive()
+  exchangeRate?: number;
+
+  // FIX 19: terms — payment terms text
   @ApiPropertyOptional({ example: 'Payment due within 30 days. Late fee of 2% per month.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  terms?: string;
+
+  @ApiPropertyOptional({ example: 'Thank you for your business.' })
   @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string;
 
-  @ApiPropertyOptional({
-    example: false,
-    default: false,
-    description: 'Mark as recurring — template for auto-generation on each billing cycle.',
-  })
+  @ApiPropertyOptional({ example: false, default: false })
   @IsOptional()
   @IsBoolean()
   isRecurring?: boolean;
 
+  // FIX 21: RecurringPeriod aligned with schema enum
   @ApiPropertyOptional({
-    example: 'MONTHLY',
-    description: 'Recurring period: MONTHLY, QUARTERLY, ANNUAL',
+    enum: RecurringPeriod,
+    description: 'WEEKLY | BIWEEKLY | MONTHLY | QUARTERLY | ANNUALLY',
   })
   @IsOptional()
-  @IsString()
-  @IsEnum(['MONTHLY', 'QUARTERLY', 'ANNUAL'])
-  recurringPeriod?: string;
+  @IsEnum(RecurringPeriod)
+  recurringPeriod?: RecurringPeriod;
 
-  @ApiProperty({
-    type: [CreateInvoiceLineItemDto],
-    minItems: 1,
-    maxItems: 100,
-    description: 'At least one line item is required.',
-  })
+  @ApiPropertyOptional({ example: '2026-12-31', description: 'Stop generating after this date' })
+  @IsOptional()
+  @IsDateString()
+  recurringEndDate?: string;
+
+  @ApiProperty({ type: [CreateInvoiceLineItemDto], minItems: 1, maxItems: 100 })
   @IsArray()
-  @ArrayMinSize(1, { message: 'An invoice must have at least one line item' })
-  @ArrayMaxSize(100, { message: 'An invoice cannot exceed 100 line items' })
+  @ArrayMinSize(1, { message: 'At least one line item is required' })
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => CreateInvoiceLineItemDto)
   lineItems!: CreateInvoiceLineItemDto[];
 }
 
-// ─── Update invoice ────────────────────────────────────────────────────────
+// ─── Update invoice (DRAFT only) ──────────────────────────────────────────
 
 export class UpdateInvoiceDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) clientName?: string;
   @ApiPropertyOptional() @IsOptional() @IsEmail() clientEmail?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) clientAddress?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(50) clientTaxId?: string;
   @ApiPropertyOptional() @IsOptional() @IsDateString() dueDate?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) terms?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(2000) notes?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) purchaseOrder?: string;
 }
 
 // ─── Record payment ────────────────────────────────────────────────────────
@@ -172,40 +223,46 @@ export class UpdateInvoiceDto {
 export class RecordPaymentDto {
   @ApiProperty({
     example: 50000,
-    description: 'Amount paid in the invoice currency. Can be a partial payment.',
+    description: 'Amount in invoice currency. Partial payments allowed.',
   })
   @IsNumber({ allowNaN: false, allowInfinity: false })
   @IsPositive()
   amount!: number;
 
-  @ApiPropertyOptional({
-    example: 'PKR',
-    description: 'Currency of the payment. Must match invoice currency for PKR invoices.',
-  })
+  @ApiPropertyOptional({ example: 'PKR' })
   @IsOptional()
   @IsString()
   @MinLength(3)
   @MaxLength(3)
   currency?: string;
 
+  @ApiPropertyOptional({ example: 278.5, description: 'Exchange rate used for this payment' })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @IsPositive()
+  exchangeRate?: number;
+
   @ApiProperty({
     example: 'bank_transfer',
-    description: 'Payment method: bank_transfer | cash | cheque | online',
+    enum: ['bank_transfer', 'cash', 'cheque', 'online', 'other'],
   })
   @IsString()
   @IsEnum(['bank_transfer', 'cash', 'cheque', 'online', 'other'])
   method!: string;
 
-  @ApiPropertyOptional({
-    example: 'TXN-HBL-20250601-12345',
-    description: 'Bank transaction reference or cheque number',
-  })
+  @ApiPropertyOptional({ example: 'TXN-HBL-20250601-12345' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   reference?: string;
 
-  @ApiProperty({ example: '2025-06-01', description: 'Date the payment was received' })
+  @ApiPropertyOptional({ example: 'Partial payment via HBL transfer' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  notes?: string;
+
+  @ApiProperty({ example: '2025-06-01' })
   @IsDateString()
   paidAt!: string;
 }
@@ -220,7 +277,7 @@ export class QueryInvoicesDto {
   @Type(() => Number)
   page?: number;
 
-  @ApiPropertyOptional({ example: 20 })
+  @ApiPropertyOptional({ example: 25, default: 25 })
   @IsOptional()
   @IsNumber()
   @Min(1)
@@ -228,10 +285,20 @@ export class QueryInvoicesDto {
   @Type(() => Number)
   limit?: number;
 
-  @ApiPropertyOptional({ enum: ['DRAFT', 'SENT', 'PARTIALLY_PAID', 'PAID', 'VOID', 'DISPUTED'] })
+  // FIX 23: VIEWED and OVERDUE added
+  @ApiPropertyOptional({
+    enum: InvoiceStatus,
+    description: 'DRAFT | SENT | VIEWED | PARTIALLY_PAID | PAID | OVERDUE | VOID | DISPUTED',
+  })
   @IsOptional()
-  @IsString()
+  @IsEnum(InvoiceStatus)
   status?: InvoiceStatus;
+
+  // FIX 22: customerId filter
+  @ApiPropertyOptional({ description: 'Filter by Contact UUID (customer)' })
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
 
   @ApiPropertyOptional({ example: '2025-01-01' })
   @IsOptional()
@@ -243,13 +310,13 @@ export class QueryInvoicesDto {
   @IsDateString()
   toDate?: string;
 
-  @ApiPropertyOptional({ example: 'ACME', description: 'Filter by client name (partial match)' })
+  @ApiPropertyOptional({ example: 'ACME' })
   @IsOptional()
   @IsString()
   @MaxLength(100)
   clientName?: string;
 
-  @ApiPropertyOptional({ example: 'USD', description: 'Filter by invoice currency' })
+  @ApiPropertyOptional({ example: 'USD' })
   @IsOptional()
   @IsString()
   @MinLength(3)
@@ -257,15 +324,16 @@ export class QueryInvoicesDto {
   currency?: string;
 
   @ApiPropertyOptional({
-    description: 'Return only overdue invoices (dueDate < today, not PAID/VOID)',
+    description: 'Only return overdue invoices (dueDate < today, status ≠ PAID|VOID)',
   })
   @IsOptional()
   @IsBoolean()
   @Type(() => Boolean)
   overdueOnly?: boolean;
-}
 
-/*
- * Sprint S2 · Invoicing & Billing · Week 5–6
- * Owned by: Invoicing team
- */
+  @ApiPropertyOptional({ description: 'Only return recurring invoices' })
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  recurringOnly?: boolean;
+}

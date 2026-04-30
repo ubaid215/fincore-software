@@ -11,6 +11,7 @@ import { AuthService } from './services/auth.service';
 import { EmailService } from './services/email.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
+import { SessionPolicyService } from './services/session-policy.service';
 import { PrismaModule } from '../../database/prisma.module';
 
 @Module({
@@ -38,7 +39,7 @@ import { PrismaModule } from '../../database/prisma.module';
     PrismaModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, EmailService, JwtStrategy, GoogleStrategy],
+  providers: [AuthService, EmailService, SessionPolicyService, JwtStrategy, GoogleStrategy],
   exports: [AuthService, JwtModule, EmailService],
 })
 export class AuthModule {}
